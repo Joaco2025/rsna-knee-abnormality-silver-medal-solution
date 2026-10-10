@@ -1,0 +1,17 @@
+58 estudios etiquetados en común
+etiqueta          pos.of pos.inf  VP  FP  FN  VN   sens   prec  acuerdo   FN: informe lo niega / no lo menciona
+ACL                   24      29  23   6   1  28   0.96   0.79     0.88   1 / 0
+MCL                    9      16   9   7   0  42   1.00   0.56     0.88   0 / 0
+Medial Meniscus       26      27  23   4   3  28   0.88   0.85     0.88   2 / 1
+Lateral Meniscus      23      22  18   4   5  31   0.78   0.82     0.84   4 / 1
+Medial OA             15      18  14   4   1  39   0.93   0.78     0.91   1 / 0
+Lateral OA            11      14   8   6   3  41   0.73   0.57     0.84   2 / 1
+PF OA                 21      14  14   0   7  37   0.67   1.00     0.88   4 / 3
+Effusion              35      51  35  16   0   7   1.00   0.69     0.72   0 / 0
+Synovitis             27      17  13   4  14  27   0.48   0.76     0.69   0 / 14
+Baker's               12      16  11   5   1  41   0.92   0.69     0.90   0 / 1
+Contusion             19      25  16   9   3  30   0.84   0.64     0.79   1 / 2
+Fracture              18      19  14   5   4  35   0.78   0.74     0.84   0 / 4
+TOTAL                240     268 198  70  42 386   0.82   0.74     0.84
+
+Estudios con las 12 etiquetas iguales: 6 de 58
