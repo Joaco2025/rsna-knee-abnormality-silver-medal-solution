@@ -24,8 +24,8 @@ _to_delete/
 *.csv
 *.tsv
 *.jsonl
-# Excepción: lectura de referencia del piloto (58 estudios), necesaria para evaluar extracciones.
-!etiquetas/piloto_58/prediccion_lector.csv
+# Sin excepciones: los identificadores de estudio y las etiquetas derivadas son datos de la
+# competencia (regla 2.4.b y licencia MIRA) y no deben salir del cluster.
 
 # ---------- Modelos y seguimiento de experimentos ----------
 *.pt
