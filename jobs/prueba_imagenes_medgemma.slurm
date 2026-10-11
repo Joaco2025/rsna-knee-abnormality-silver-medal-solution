@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=48G
+#SBATCH --mem=64G
 #SBATCH --time=01:00:00
 #SBATCH --gres=gpu:1
 #SBATCH -o logs/%x_%j.out
@@ -62,8 +62,13 @@ export NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
 PORT=$((20000 + SLURM_JOB_ID % 20000))                   # puerto propio del job, solo local
 
 # --- Servidor (vive solo mientras dure el job) ---------------------------------
+# Sin puntos de control ni caché en RAM: con contextos de ~22 mil tokens por estudio agotaban la
+# memoria del job (OOM en el job 2079151). La reutilización del prefijo dentro del slot se mantiene.
+echo "--- dispositivos que ve el motor:"
+"$LLAMA_DIR/llama-server" --list-devices 2>&1 | tail -n 4 || true
 "$LLAMA_DIR/llama-server" --model "$MODEL" --mmproj "$MMPROJ" --host 127.0.0.1 --port "$PORT" \
-    --no-webui --offline -c 32768 -np 1 -ngl 999 --jinja >"$OUT/llama_server.log" 2>&1 &
+    --no-webui --offline -c 32768 -np 1 -ngl 999 --jinja --ctx-checkpoints 0 --cache-ram 0 \
+    >"$OUT/llama_server.log" 2>&1 &
 SERVE_PID=$!
 trap 'kill "$SERVE_PID" 2>/dev/null || true' EXIT
 
@@ -73,6 +78,8 @@ for _ in $(seq 150); do
     sleep 2
 done
 curl -sf -m 5 "http://127.0.0.1:$PORT/health" >/dev/null || { echo "llama-server no respondió a tiempo" >&2; tail -n 30 "$OUT/llama_server.log" >&2; exit 1; }
+echo "--- memoria de GPU con el modelo cargado:"
+rocm-smi --showmeminfo vram 2>/dev/null | grep -i "used" || true
 echo "--- carga del modelo:"
 grep -E "offloaded|using device|mmproj|clip|n_ctx  |chat template|vision" "$OUT/llama_server.log" | cut -c1-160 | head -14 || true
 
@@ -81,4 +88,5 @@ grep -E "offloaded|using device|mmproj|clip|n_ctx  |chat template|vision" "$OUT/
 
 echo "--- tiempos del servidor (últimas consultas):"
 grep -E "prompt eval time|       eval time|image.*encod|encoding image" "$OUT/llama_server.log" | tail -n 6 | cut -c1-160 || true
+echo "--- memoria del servidor al terminar: $(ps -o rss= -p "$SERVE_PID" 2>/dev/null | awk '{printf "%.1f GB", $1/1048576}')"
 echo "fin=$(date -Is)"
