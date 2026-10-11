@@ -44,10 +44,10 @@ type module >/dev/null 2>&1 || source /usr/share/Modules/init/bash
 module load rocm/7.2.2 ollama/0.34.0
 set -u
 
-# Los modelos bajados por el proyecto (hf.co/...) viven en $PROJ/modelos/ollama; el resto, en la
-# carpeta compartida del cluster, que es de SOLO LECTURA.
+# Los modelos propios del proyecto (hf.co/... o p082/...) viven en $PROJ/modelos/ollama; el resto,
+# en la carpeta compartida del cluster, que es de SOLO LECTURA.
 case "$MODEL" in
-    hf.co/*) export OLLAMA_MODELS="$PROJ/modelos/ollama" ;;
+    hf.co/*|p082/*) export OLLAMA_MODELS="$PROJ/modelos/ollama" ;;
     *)       export OLLAMA_MODELS=/lustre/proyectos/ollama-models ;;
 esac
 export OLLAMA_NOPRUNE=1                                   # no intentar limpiar blobs ajenos
