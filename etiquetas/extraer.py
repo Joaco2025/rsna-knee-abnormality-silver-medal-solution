@@ -15,6 +15,7 @@ import json
 import os
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
@@ -99,6 +100,8 @@ def main():
     ap.add_argument("--skip-from", type=Path, nargs="*", default=[],
                     help="extraccion.jsonl de ejecuciones anteriores cuyos estudios ya correctos se saltan")
     ap.add_argument("--limit", type=int, default=0, help="máximo de informes a procesar en esta ejecución; 0 = todos")
+    ap.add_argument("--workers", type=int, default=1,
+                    help="informes en paralelo; debe coincidir con OLLAMA_NUM_PARALLEL del servidor")
     ap.add_argument("--timeout", type=int, default=900, help="segundos por informe (el primero incluye la carga del modelo)")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
@@ -127,41 +130,51 @@ def main():
     todo = df[~df.StudyInstanceUID.isin(done)]
     if args.limit:
         todo = todo.head(args.limit)
-    print(f"modelo={args.model} prompt={PROMPT_VERSION} subset={args.subset} parte={args.shard} "
+    print(f"modelo={args.model} prompt={PROMPT_VERSION} subset={args.subset} parte={args.shard} paralelo={args.workers} "
           f"seleccionados={len(df)} ya_hechos={len(df) - int((~df.StudyInstanceUID.isin(done)).sum())} "
           f"por_hacer={len(todo)}", flush=True)
 
+    def process(rec) -> dict:
+        record = {"StudyInstanceUID": rec.StudyInstanceUID, "model": args.model,
+                  "prompt_version": PROMPT_VERSION, "n_chars": len(str(rec.Report))}
+        t0 = time.time()
+        try:
+            resp = chat(args.host, args.model, rec.Report, args.timeout)
+            record["raw"] = resp.get("message", {}).get("content", "")
+            for k in ["load_duration", "prompt_eval_count", "eval_count", "eval_duration", "done_reason"]:
+                record[k] = resp.get(k)
+            record["parsed"] = json.loads(record["raw"])
+            if not valid(record["parsed"]):
+                raise ValueError("la respuesta no cumple el esquema")
+        except Exception as exc:  # un informe problemático no debe detener el lote
+            record["error"] = f"{type(exc).__name__}: {exc}"[:500]
+        record["wall_s"] = round(time.time() - t0, 2)
+        return record
+
     t_start, n_ok, n_bad, gen_tokens, gen_ns = time.time(), 0, 0, 0, 0
-    with open(path, "a") as fh:
-        for i, rec in enumerate(todo.itertuples(index=False), 1):
-            record = {"StudyInstanceUID": rec.StudyInstanceUID, "model": args.model,
-                      "prompt_version": PROMPT_VERSION, "n_chars": len(str(rec.Report))}
-            t0 = time.time()
-            try:
-                resp = chat(args.host, args.model, rec.Report, args.timeout)
-                record["raw"] = resp.get("message", {}).get("content", "")
-                for k in ["load_duration", "prompt_eval_count", "eval_count", "eval_duration", "done_reason"]:
-                    record[k] = resp.get(k)
-                record["parsed"] = json.loads(record["raw"])
-                if not valid(record["parsed"]):
-                    raise ValueError("la respuesta no cumple el esquema")
+    items = list(todo.itertuples(index=False))
+    with open(path, "a") as fh, ThreadPoolExecutor(max(1, args.workers)) as pool:
+        # El primer informe va solo: carga el modelo y evita que varias peticiones esperen a la vez.
+        first = [process(items[0])] if items else []
+        rest = pool.map(process, items[1:])
+        for i, record in enumerate((r for part in (first, rest) for r in part), 1):
+            if "error" in record:
+                n_bad += 1
+            else:
                 n_ok += 1
                 gen_tokens += record["eval_count"] or 0
                 gen_ns += record["eval_duration"] or 0
-            except Exception as exc:  # un informe problemático no debe detener el lote
-                record["error"] = f"{type(exc).__name__}: {exc}"[:500]
-                n_bad += 1
-            record["wall_s"] = round(time.time() - t0, 2)
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             fh.flush()
-            if i <= 3 or i % 50 == 0 or i == len(todo) or "error" in record:
-                print(f"[{i}/{len(todo)}] {record['wall_s']} s  salida={record.get('eval_count')} tokens  "
+            if i <= 3 or i % 50 == 0 or i == len(items) or "error" in record:
+                print(f"[{i}/{len(items)}] {record['wall_s']} s  salida={record.get('eval_count')} tokens  "
                       f"{'ERROR ' + record['error'] if 'error' in record else 'ok'}", flush=True)
 
     elapsed = time.time() - t_start
     print(f"\n== {n_ok} correctos, {n_bad} con error, {elapsed / 60:.1f} min en total", flush=True)
     if n_ok:
-        print(f"{elapsed / (n_ok + n_bad):.1f} s por informe incluida la carga; "
+        print(f"en paralelo: {args.workers}; {(n_ok + n_bad) / elapsed * 3600:.0f} informes por hora incluida la carga; "
+              f"{elapsed / (n_ok + n_bad):.1f} s por informe; "
               f"{gen_tokens / n_ok:.0f} tokens de salida por informe; "
               f"{gen_tokens / gen_ns * 1e9 if gen_ns else float('nan'):.1f} tokens/s", flush=True)
     elif len(todo):

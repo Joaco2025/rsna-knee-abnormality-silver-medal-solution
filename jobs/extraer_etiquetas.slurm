@@ -26,6 +26,7 @@ SUBSET=${1:-labeled}
 MODEL=${2:-qwen2.5:72b}
 SHARD=${3:-0/1}
 PREVIOS=("${@:4}")
+PARALELO=${PARALELO:-1}        # informes en paralelo; se pasa con: sbatch --export=ALL,PARALELO=4 ...
 
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
@@ -34,7 +35,7 @@ OUT="$PROJ/runs/${SLURM_JOB_ID:?}"                                              
 mkdir -p "$OUT"
 cd "$PROJ/code"
 
-echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) subset=$SUBSET modelo=$MODEL parte=$SHARD"
+echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) subset=$SUBSET modelo=$MODEL parte=$SHARD paralelo=$PARALELO"
 echo "commit=$(git rev-parse --short HEAD)" | tee "$OUT/commit.txt"
 
 # --- Entorno -----------------------------------------------------------------
@@ -53,7 +54,7 @@ esac
 export OLLAMA_NOPRUNE=1                                   # no intentar limpiar blobs ajenos
 export OLLAMA_HOST="127.0.0.1:$((20000 + SLURM_JOB_ID % 20000))"   # puerto propio del job, solo local
 export OLLAMA_KEEP_ALIVE=30m
-export OLLAMA_NUM_PARALLEL=1
+export OLLAMA_NUM_PARALLEL="$PARALELO"                    # informes simultáneos sobre una sola copia del modelo
 export NO_PROXY=127.0.0.1,localhost no_proxy=127.0.0.1,localhost
 
 # --- Servidor (vive solo mientras dure el job) ---------------------------------
@@ -68,7 +69,7 @@ for _ in $(seq 60); do
 done
 
 # --- Trabajo -----------------------------------------------------------------
-"$PY" etiquetas/extraer.py --host "$OLLAMA_HOST" --model "$MODEL" --subset "$SUBSET" --shard "$SHARD" \
+"$PY" etiquetas/extraer.py --host "$OLLAMA_HOST" --model "$MODEL" --subset "$SUBSET" --shard "$SHARD" --workers "$PARALELO" \
     --out "$OUT" ${PREVIOS[@]:+--skip-from "${PREVIOS[@]}"}
 ollama ps
 
