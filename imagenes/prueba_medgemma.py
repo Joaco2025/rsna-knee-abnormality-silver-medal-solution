@@ -20,6 +20,7 @@ import io
 import json
 import math
 import os
+import subprocess
 import time
 import urllib.request
 from pathlib import Path
@@ -100,6 +101,54 @@ def study_images(study_uid: str, series: pd.DataFrame, planes: list[str], max_sl
         img.save(buf, format="PNG")
         images.append(base64.b64encode(buf.getvalue()).decode())
     return images, {"series": used, "cortes_totales": total, "cortes_enviados": len(images)}
+
+
+class Server:
+    """llama-server local que se reinicia cada pocos estudios: su memoria crece con cada imagen recibida."""
+
+    def __init__(self, binary: str, model: str, mmproj: str, host: str, log: Path):
+        ip, port = host.split(":")
+        self.cmd = [binary, "--model", model, "--mmproj", mmproj, "--host", ip, "--port", port, "--no-webui",
+                    "--offline", "-c", "32768", "-np", "1", "-ngl", "999", "--jinja",
+                    "--ctx-checkpoints", "0", "--cache-ram", "0"]
+        self.host, self.log, self.proc, self.starts = host, log, None, 0
+
+    def start(self) -> None:
+        self.stop()
+        self.proc = subprocess.Popen(self.cmd, stdout=open(self.log, "a"), stderr=subprocess.STDOUT)
+        self.starts += 1
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        for _ in range(150):
+            if self.proc.poll() is not None:
+                raise RuntimeError(f"llama-server terminó al arrancar (código {self.proc.returncode}); ver {self.log}")
+            try:
+                with opener.open(f"http://{self.host}/health", timeout=5) as resp:
+                    if resp.status == 200:
+                        return
+            except Exception:
+                pass
+            time.sleep(2)
+        raise RuntimeError("llama-server no respondió a tiempo")
+
+    def rss_gb(self) -> float:
+        try:
+            with open(f"/proc/{self.proc.pid}/status") as fh:
+                for line in fh:
+                    if line.startswith("VmRSS:"):
+                        return int(line.split()[1]) / 1048576
+        except Exception:
+            pass
+        return float("nan")
+
+    def stop(self) -> None:
+        if self.proc and self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                self.proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait()
+        self.proc = None
 
 
 def post(host: str, body: dict, timeout: int) -> dict:
@@ -203,6 +252,10 @@ def main():
     ap.add_argument("--max-slices", type=int, default=85)
     ap.add_argument("--size", type=int, default=896)
     ap.add_argument("--timeout", type=int, default=1800)
+    ap.add_argument("--llama-server", default="", help="ruta del binario: si se da, el script arranca y reinicia el servidor")
+    ap.add_argument("--model", default="")
+    ap.add_argument("--mmproj", default="")
+    ap.add_argument("--restart-every", type=int, default=1, help="reiniciar el servidor cada N estudios")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -233,12 +286,16 @@ def main():
 
     say(f"modo={args.mode} planos={args.planes} max_cortes={args.max_slices} tamaño={args.size} estudios={len(uids)}"
         f" excluidos_primeros={args.exclude_first}{neg_note}")
-    records, n_err = [], 0
+    server = Server(args.llama_server, args.model, args.mmproj, args.host, args.out / "llama_server.log") if args.llama_server else None
+    records, n_err, max_rss = [], 0, 0.0
     with open(args.out / "imagenes_respuestas.jsonl", "w") as fh:
         for i, uid in enumerate(uids, 1):
             rec = {"StudyInstanceUID": uid, "mode": args.mode}
             t0 = time.time()
             try:
+                if server and (i - 1) % max(1, args.restart_every) == 0:
+                    server.start()
+                    t0 = time.time()   # el arranque del servidor no cuenta como preparación de imágenes
                 images, info = study_images(uid, series, args.planes.split(","), args.max_slices, args.size)
                 rec.update(info)
                 rec["prep_s"] = round(time.time() - t0, 1)
@@ -253,9 +310,15 @@ def main():
                 n_err += 1
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
             fh.flush()
-            say(f"[{i}/{len(uids)}] cortes={rec.get('cortes_enviados')} de {rec.get('cortes_totales')}  "
-                f"prep={rec.get('prep_s')} s  modelo={rec.get('modelo_s')} s  "
-                f"{'ERROR ' + rec['error'] if 'error' in rec else 'ok'}")
+            rss = server.rss_gb() if server and server.proc else float("nan")
+            max_rss = max(max_rss, rss) if rss == rss else max_rss
+            if i <= 3 or i % 10 == 0 or i == len(uids) or "error" in rec:
+                say(f"[{i}/{len(uids)}] cortes={rec.get('cortes_enviados')} de {rec.get('cortes_totales')}  "
+                    f"prep={rec.get('prep_s')} s  modelo={rec.get('modelo_s')} s  servidor={rss:.1f} GB  "
+                    f"{'ERROR ' + rec['error'] if 'error' in rec else 'ok'}")
+    if server:
+        say(f"Servidor: {server.starts} arranques; memoria máxima observada {max_rss:.1f} GB")
+        server.stop()
 
     say(f"\n== {len(records)} estudios correctos, {n_err} con error")
     if records:
