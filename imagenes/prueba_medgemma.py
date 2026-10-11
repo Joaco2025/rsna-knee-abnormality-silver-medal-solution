@@ -106,10 +106,10 @@ def study_images(study_uid: str, series: pd.DataFrame, planes: list[str], max_sl
 class Server:
     """llama-server local que se reinicia cada pocos estudios: su memoria crece con cada imagen recibida."""
 
-    def __init__(self, binary: str, model: str, mmproj: str, host: str, log: Path):
+    def __init__(self, binary: str, model: str, mmproj: str, host: str, log: Path, ctx: int = 32768):
         ip, port = host.split(":")
         self.cmd = [binary, "--model", model, "--mmproj", mmproj, "--host", ip, "--port", port, "--no-webui",
-                    "--offline", "-c", "32768", "-np", "1", "-ngl", "999", "--jinja",
+                    "--offline", "-c", str(ctx), "-np", "1", "-ngl", "999", "--jinja",
                     "--ctx-checkpoints", "0", "--cache-ram", "0"]
         self.host, self.log, self.proc, self.starts = host, log, None, 0
 
@@ -256,6 +256,8 @@ def main():
     ap.add_argument("--model", default="")
     ap.add_argument("--mmproj", default="")
     ap.add_argument("--restart-every", type=int, default=1, help="reiniciar el servidor cada N estudios")
+    ap.add_argument("--ctx", type=int, default=32768,
+                    help="contexto del servidor en tokens; cada corte ocupa ~262 (85 cortes caben en 32768)")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -285,8 +287,10 @@ def main():
         lines.append(text)
 
     say(f"modo={args.mode} planos={args.planes} max_cortes={args.max_slices} tamaño={args.size} estudios={len(uids)}"
-        f" excluidos_primeros={args.exclude_first}{neg_note}")
-    server = Server(args.llama_server, args.model, args.mmproj, args.host, args.out / "llama_server.log") if args.llama_server else None
+        f" contexto={args.ctx} excluidos_primeros={args.exclude_first}{neg_note}")
+    if args.max_slices * 265 + 600 > args.ctx:
+        raise SystemExit(f"{args.max_slices} cortes no caben en un contexto de {args.ctx} tokens")
+    server = Server(args.llama_server, args.model, args.mmproj, args.host, args.out / "llama_server.log", args.ctx) if args.llama_server else None
     records, n_err, max_rss = [], 0, 0.0
     with open(args.out / "imagenes_respuestas.jsonl", "w") as fh:
         for i, uid in enumerate(uids, 1):
