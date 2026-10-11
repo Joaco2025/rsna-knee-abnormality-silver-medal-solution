@@ -14,13 +14,14 @@
 # Prueba sin ajuste de MedGemma 1.5 4B (con visión) sobre las resonancias de los estudios etiquetados.
 # Verifica los SHA-256 de los archivos subidos a mano, arranca el llama-server que trae Ollama DENTRO
 # del job (solo 127.0.0.1) y le pasa los cortes axiales. Las imágenes no salen del nodo.
-# Lanzar desde code/:  sbatch jobs/prueba_imagenes_medgemma.slurm [N_ESTUDIOS] [por_hallazgo|json] [PLANOS]
+# Lanzar desde code/:  sbatch jobs/prueba_imagenes_medgemma.slurm [N_ESTUDIOS] [por_hallazgo|json] [PLANOS] [OPCIONES...]
 #   N_ESTUDIOS: 4 por defecto (prueba corta); 0 = los 58 etiquetados (ampliar --time).
 set -euo pipefail
 
 LIMIT=${1:-4}
 MODE=${2:-por_hallazgo}
 PLANES=${3:-Axial}
+EXTRA=("${@:4}")      # opciones adicionales para el script, p. ej. --negative-for "Effusion,Baker's" --exclude-first 4
 
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
@@ -84,7 +85,7 @@ echo "--- carga del modelo:"
 grep -E "offloaded|using device|mmproj|clip|n_ctx  |chat template|vision" "$OUT/llama_server.log" | cut -c1-160 | head -14 || true
 
 # --- Trabajo -----------------------------------------------------------------
-"$PY" imagenes/prueba_medgemma.py --host "127.0.0.1:$PORT" --out "$OUT" --limit "$LIMIT" --mode "$MODE" --planes "$PLANES"
+"$PY" imagenes/prueba_medgemma.py --host "127.0.0.1:$PORT" --out "$OUT" --limit "$LIMIT" --mode "$MODE" --planes "$PLANES" ${EXTRA[@]:+"${EXTRA[@]}"}
 
 echo "--- tiempos del servidor (últimas consultas):"
 grep -E "prompt eval time|       eval time|image.*encod|encoding image" "$OUT/llama_server.log" | tail -n 6 | cut -c1-160 || true

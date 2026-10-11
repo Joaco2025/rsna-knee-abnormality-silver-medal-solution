@@ -195,6 +195,10 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--limit", type=int, default=0, help="número de estudios; 0 = los 58 etiquetados")
     ap.add_argument("--mode", default="por_hallazgo", choices=["por_hallazgo", "json"])
+    ap.add_argument("--negative-for", default="",
+                    help="hallazgos separados por comas: elige primero los estudios cuya etiqueta oficial es negativa en ellos")
+    ap.add_argument("--exclude-first", type=int, default=0,
+                    help="descarta los N primeros estudios por orden de identificador (los de una prueba anterior)")
     ap.add_argument("--planes", default="Axial", help="planos separados por comas (el modelo se entrenó con axial)")
     ap.add_argument("--max-slices", type=int, default=85)
     ap.add_argument("--size", type=int, default=896)
@@ -206,7 +210,20 @@ def main():
     cols = list(FINDINGS)
     gold = train.loc[train[cols].notna().all(axis=1), cols].astype(int).sort_index()
     series = pd.read_csv(DATA / "train_series.csv", dtype={"StudyInstanceUID": str, "SeriesInstanceUID": str})
-    uids = list(gold.index[: args.limit] if args.limit else gold.index)
+    pool = gold.iloc[args.exclude_first:]
+    neg_note = ""
+    if args.negative_for:
+        neg_cols = [c.strip() for c in args.negative_for.split(",")]
+        unknown = [c for c in neg_cols if c not in cols]
+        if unknown:
+            raise SystemExit(f"Hallazgos desconocidos en --negative-for: {unknown}")
+        # Primero los negativos en todos esos hallazgos; a igualdad, los de menos positivos en total.
+        order = pd.DataFrame({"neg": pool[neg_cols].sum(axis=1), "tot": pool.sum(axis=1)}).sort_values(["neg", "tot"], kind="stable")
+        pool = pool.loc[order.index]
+        neg_note = (f" | negativos oficiales en {neg_cols}: {int((order.neg == 0).sum())} disponibles de {len(order)}"
+                    f"; positivos en esos hallazgos entre los elegidos: "
+                    f"{order.neg.iloc[: args.limit or len(order)].astype(int).tolist()}")
+    uids = list(pool.index[: args.limit] if args.limit else pool.index)
 
     lines: list[str] = []
 
@@ -214,7 +231,8 @@ def main():
         print(text, flush=True)
         lines.append(text)
 
-    say(f"modo={args.mode} planos={args.planes} max_cortes={args.max_slices} tamaño={args.size} estudios={len(uids)}")
+    say(f"modo={args.mode} planos={args.planes} max_cortes={args.max_slices} tamaño={args.size} estudios={len(uids)}"
+        f" excluidos_primeros={args.exclude_first}{neg_note}")
     records, n_err = [], 0
     with open(args.out / "imagenes_respuestas.jsonl", "w") as fh:
         for i, uid in enumerate(uids, 1):
