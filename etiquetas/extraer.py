@@ -95,6 +95,9 @@ def main():
     ap.add_argument("--model", default="qwen2.5:72b")
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--subset", default="labeled", choices=["labeled", "unlabeled", "all"])
+    ap.add_argument("--shard", default="0/1", help="I/N: procesa la parte I de N (reparto estable por StudyInstanceUID)")
+    ap.add_argument("--skip-from", type=Path, nargs="*", default=[],
+                    help="extraccion.jsonl de ejecuciones anteriores cuyos estudios ya correctos se saltan")
     ap.add_argument("--limit", type=int, default=0, help="máximo de informes a procesar en esta ejecución; 0 = todos")
     ap.add_argument("--timeout", type=int, default=900, help="segundos por informe (el primero incluye la carga del modelo)")
     args = ap.parse_args()
@@ -108,16 +111,25 @@ def main():
     elif args.subset == "unlabeled":
         df = df[~labeled]
 
+    part, n_parts = (int(x) for x in args.shard.split("/"))
+    if not 0 <= part < n_parts:
+        raise SystemExit(f"--shard inválido: {args.shard}")
+    df = df.sort_values("StudyInstanceUID").reset_index(drop=True)
+    df = df[df.index % n_parts == part]
+
     done = set()
-    if path.exists():
-        for line in path.read_text().splitlines():
-            rec = json.loads(line)
-            if "error" not in rec:
-                done.add(rec["StudyInstanceUID"])
+    for prev in [path, *args.skip_from]:
+        if prev.exists():
+            for line in prev.read_text().splitlines():
+                rec = json.loads(line)
+                if "error" not in rec and rec.get("prompt_version") == PROMPT_VERSION and rec.get("model") == args.model:
+                    done.add(rec["StudyInstanceUID"])
     todo = df[~df.StudyInstanceUID.isin(done)]
     if args.limit:
         todo = todo.head(args.limit)
-    print(f"modelo={args.model} prompt={PROMPT_VERSION} subset={args.subset} ya_hechos={len(done)} por_hacer={len(todo)}", flush=True)
+    print(f"modelo={args.model} prompt={PROMPT_VERSION} subset={args.subset} parte={args.shard} "
+          f"seleccionados={len(df)} ya_hechos={len(df) - int((~df.StudyInstanceUID.isin(done)).sum())} "
+          f"por_hacer={len(todo)}", flush=True)
 
     t_start, n_ok, n_bad, gen_tokens, gen_ns = time.time(), 0, 0, 0, 0
     with open(path, "a") as fh:
@@ -142,7 +154,7 @@ def main():
             record["wall_s"] = round(time.time() - t0, 2)
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
             fh.flush()
-            if i <= 3 or i % 10 == 0 or i == len(todo):
+            if i <= 3 or i % 50 == 0 or i == len(todo) or "error" in record:
                 print(f"[{i}/{len(todo)}] {record['wall_s']} s  salida={record.get('eval_count')} tokens  "
                       f"{'ERROR ' + record['error'] if 'error' in record else 'ok'}", flush=True)
 

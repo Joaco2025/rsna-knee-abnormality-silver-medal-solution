@@ -15,11 +15,17 @@
 # si el subconjunto incluye estudios etiquetados, evalúa contra las etiquetas oficiales.
 # Ollama arranca DENTRO del job, escucha solo en 127.0.0.1 y muere al terminar.
 # Por defecto procesa solo los 58 estudios etiquetados (unos 30 minutos).
-# Lanzar desde code/:  sbatch jobs/extraer_etiquetas.slurm [labeled|unlabeled|all] [MODELO]
+# Lanzar desde code/:  sbatch jobs/extraer_etiquetas.slurm [labeled|unlabeled|all] [MODELO] [PARTE/N] [JSONL_PREVIO...]
+# Para los ~4,349 no etiquetados (unos 21 s por informe) repartir en dos jobs y ampliar el tiempo:
+#   sbatch --time=16:00:00 jobs/extraer_etiquetas.slurm unlabeled qwen2.5:72b 0/2
+#   sbatch --time=16:00:00 jobs/extraer_etiquetas.slurm unlabeled qwen2.5:72b 1/2
+# Si un job se corta, relanzarlo pasando su extraccion.jsonl como JSONL_PREVIO para no repetir informes.
 set -euo pipefail
 
 SUBSET=${1:-labeled}
 MODEL=${2:-qwen2.5:72b}
+SHARD=${3:-0/1}
+PREVIOS=("${@:4}")
 
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
@@ -28,7 +34,7 @@ OUT="$PROJ/runs/${SLURM_JOB_ID:?}"                                              
 mkdir -p "$OUT"
 cd "$PROJ/code"
 
-echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) subset=$SUBSET modelo=$MODEL"
+echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) subset=$SUBSET modelo=$MODEL parte=$SHARD"
 echo "commit=$(git rev-parse --short HEAD)" | tee "$OUT/commit.txt"
 
 # --- Entorno -----------------------------------------------------------------
@@ -57,7 +63,8 @@ for _ in $(seq 60); do
 done
 
 # --- Trabajo -----------------------------------------------------------------
-"$PY" etiquetas/extraer.py --host "$OLLAMA_HOST" --model "$MODEL" --subset "$SUBSET" --out "$OUT"
+"$PY" etiquetas/extraer.py --host "$OLLAMA_HOST" --model "$MODEL" --subset "$SUBSET" --shard "$SHARD" \
+    --out "$OUT" ${PREVIOS[@]:+--skip-from "${PREVIOS[@]}"}
 ollama ps
 
 if [[ "$SUBSET" != unlabeled ]]; then
