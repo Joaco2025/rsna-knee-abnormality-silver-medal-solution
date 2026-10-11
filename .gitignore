@@ -1,34 +1,102 @@
-# Datos y artefactos pesados (viven fuera del repo)
+# El repo solo lleva código, configuración y resultados pequeños de texto.
+# Datos, modelos, logs y secretos viven fuera (ver /lustre/proyectos/p082/{kaggle_data,runs,preproc}).
+
+# ---------- Datos de la competencia y derivados ----------
 data/
+runs/
+preproc/
+_to_delete/
 *.dcm
+*.nii
+*.nii.gz
 *.npy
 *.npz
 *.h5
 *.hdf5
+*.parquet
+*.pkl
+*.pickle
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+# Tablas y salidas de modelos: pueden contener identificadores, etiquetas o texto de informes.
+*.csv
+*.tsv
+*.jsonl
+# Excepción: lectura de referencia del piloto (58 estudios), necesaria para evaluar extracciones.
+!etiquetas/piloto_58/prediccion_lector.csv
+
+# ---------- Modelos y seguimiento de experimentos ----------
 *.pt
 *.pth
 *.ckpt
 *.safetensors
+*.onnx
+*.gguf
 checkpoints/
-runs/
+wandb/
 mlruns/
 mlflow_artifacts/
+lightning_logs/
 *.db
+*.sqlite3
 
-# Logs de SLURM
+# ---------- Logs (SLURM y otros) ----------
+logs/
+*.log
 *.out
 *.err
-*.log
-logs/
 
-# Python / Jupyter
+# ---------- Secretos y credenciales ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+kaggle.json
+.netrc
+.git-credentials
+id_rsa*
+id_ed25519*
+*.token
+hf_token*
+
+# ---------- Claude Code: solo se versiona la configuración compartida ----------
+.claude/settings.local.json
+.claude/worktrees/
+*.skill
+
+# ---------- Python / Jupyter ----------
 __pycache__/
-*.pyc
-.ipynb_checkpoints/
+*.py[cod]
+*$py.class
 .venv/
 venv/
+env/
+ENV/
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ipynb_checkpoints/
 
-# Sistema / editores
-.DS_Store
+# ---------- Temporales, editores y sistema ----------
+tmp/
+temp/
+*.tmp
+*.swp
+*.swo
+*~
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
+desktop.ini
