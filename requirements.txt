@@ -23,4 +23,8 @@ pydicom
 pylibjpeg
 pylibjpeg-libjpeg
 pylibjpeg-openjpeg
-mlflow-skinny
+
+# Seguimiento de experimentos: misma versión que el MLflow del cluster, para compartir la base SQLite
+mlflow-skinny==3.8.1
+sqlalchemy
+alembic

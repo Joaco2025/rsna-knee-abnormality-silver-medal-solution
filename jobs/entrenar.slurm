@@ -15,7 +15,8 @@
 # Lanzar desde code/:  sbatch jobs/entrenar.slurm [OPCIONES de entrenar.py...]
 #   p. ej.  sbatch jobs/entrenar.slurm --epochs 8 --backbone resnet34
 #   prueba: sbatch --time=00:30:00 jobs/entrenar.slurm --limit 240 --epochs 1
-# Los checkpoints y el historial quedan en runs/<jobid>/; las métricas, además, en MLflow (mlruns/).
+# Los checkpoints y el historial quedan en runs/<jobid>/; las métricas, además, en MLflow
+# (base de datos SQLite en mlflow/mlflow.db, la misma que abre la aplicación de Open OnDemand).
 set -euo pipefail
 
 # --- Rutas -------------------------------------------------------------------
@@ -23,7 +24,7 @@ PROJ=/lustre/proyectos/p082
 DATA="$PROJ/preproc/v1_train"
 LABELS=$(ls -t "$PROJ"/preproc/etiquetas_v1_*.parquet | head -n 1)     # la tabla de objetivos más reciente
 OUT="$PROJ/runs/${SLURM_JOB_ID:?}"                                     # directorio nuevo por job
-mkdir -p "$OUT" "$PROJ/mlruns" "$PROJ/cache/miopen"
+mkdir -p "$OUT" "$PROJ/mlflow/artifacts" "$PROJ/cache/miopen"
 cd "$PROJ/code"
 
 echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) datos=$DATA objetivos=$LABELS opciones=$*"
@@ -46,7 +47,7 @@ WEIGHTS=$(ls "$PROJ"/modelos/torch/"${BACKBONE}"-*.pth 2>/dev/null | head -n 1 |
 echo "red=$BACKBONE pesos=${WEIGHTS:-ninguno}"
 
 # --- Trabajo -----------------------------------------------------------------
-"$PY" rsna/entrenar.py --data "$DATA" --labels "$LABELS" --out "$OUT" --mlflow "$PROJ/mlruns" \
+"$PY" rsna/entrenar.py --data "$DATA" --labels "$LABELS" --out "$OUT" --mlflow "sqlite:///$PROJ/mlflow/mlflow.db" --mlflow-artifacts "$PROJ/mlflow/artifacts" \
     --run-name "job-$SLURM_JOB_ID" ${WEIGHTS:+--weights "$WEIGHTS"} "$@"
 
 echo "fin=$(date -Is)"

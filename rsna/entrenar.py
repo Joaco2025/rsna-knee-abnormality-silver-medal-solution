@@ -51,7 +51,7 @@ class Studies(Dataset):
             r = c = (size - self.crop) // 2
         x = torch.from_numpy(np.ascontiguousarray(arr[:, :, r:r + self.crop, c:c + self.crop]))
         present = (x.flatten(1).amax(dim=1) > 0).float()
-        return x, present, torch.from_numpy(self.t[i]), torch.from_numpy(self.w[i]), torch.from_numpy(self.y[i])
+        return x, present, torch.tensor(self.t[i]), torch.tensor(self.w[i]), torch.tensor(self.y[i])
 
 
 def macro_auc(y: np.ndarray, p: np.ndarray, w: np.ndarray | None = None) -> tuple[float, list[float]]:
@@ -93,7 +93,8 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="estudios de entrenamiento, para pruebas")
     ap.add_argument("--no-amp", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
-    ap.add_argument("--mlflow", default="", help="carpeta de seguimiento de MLflow; vacío = no registrar")
+    ap.add_argument("--mlflow", default="", help="URI de seguimiento de MLflow (p. ej. sqlite:////ruta/mlflow.db); vacío = no registrar")
+    ap.add_argument("--mlflow-artifacts", default="", help="directorio de artefactos del experimento")
     ap.add_argument("--run-name", default="")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
@@ -132,7 +133,9 @@ def main():
     if args.mlflow:
         try:
             import mlflow
-            mlflow.set_tracking_uri(f"file:{args.mlflow}")
+            mlflow.set_tracking_uri(args.mlflow)
+            if mlflow.get_experiment_by_name("rsna-knee") is None:
+                mlflow.create_experiment("rsna-knee", artifact_location=args.mlflow_artifacts or None)
             mlflow.set_experiment("rsna-knee")
             ml = mlflow
             ml.start_run(run_name=args.run_name or args.out.name)
