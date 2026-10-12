@@ -191,8 +191,9 @@ def main():
             try:
                 ml.log_metrics({"loss": row["loss"], "auc_interna": auc_int, "auc_oficial": auc_off,
                                 "estudios_por_s": row["estudios_por_s"]}, step=epoch)
-                ml.log_metrics({f"oficial_{c}": a for c, a in zip(LABELS, per_off) if a == a}, step=epoch)
-                ml.log_metrics({f"interna_{c}": a for c, a in zip(LABELS, per_int) if a == a}, step=epoch)
+                # MLflow no admite apóstrofos en los nombres (Baker's)
+                ml.log_metrics({f"oficial_{c}".replace("'", ""): a for c, a in zip(LABELS, per_off) if a == a}, step=epoch)
+                ml.log_metrics({f"interna_{c}".replace("'", ""): a for c, a in zip(LABELS, per_int) if a == a}, step=epoch)
             except Exception as exc:
                 print(f"MLflow: {type(exc).__name__}: {exc}", flush=True)
 
