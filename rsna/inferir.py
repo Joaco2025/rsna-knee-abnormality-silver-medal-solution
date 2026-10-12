@@ -71,6 +71,9 @@ def main():
     models = []
     for path in args.checkpoints:
         state = torch.load(path, map_location="cpu")
+        assert state.get("labels") == LABELS, f"Etiquetas permutadas o inconsistentes en {path.name}"
+        assert state.get("backbone") in ("resnet34", "convnext_tiny", "efficientnet_v2_s"), \
+            f"Backbone no soportado en {path.name}: {state.get('backbone')}"
         model = KneeNet(state["backbone"], None)
         model.load_state_dict(state["model"])
         models.append((model.to(device).eval().to(memory_format=torch.channels_last), state["slices"], state["crop"]))

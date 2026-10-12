@@ -1,138 +1,176 @@
-# RSNA Knee Abnormalities Detection — proyecto p082
+# RSNA Knee Abnormalities Detection
 
-Código del equipo para la competencia de Kaggle
-[RSNA Knee Abnormalities Detection](https://www.kaggle.com/competitions/rsna-knee-abnormalities-detection),
-desarrollado en el cluster Yuca (ACARUS, Universidad de Sonora).
+Repositorio para la competencia de Kaggle [RSNA Knee Abnormalities Detection](https://www.kaggle.com/competitions/rsna-knee-abnormalities-detection).
 
-**Estado al 11 de octubre de 2026:** los datos están explorados y verificados, y hay etiquetas
-aproximadas para los 4,407 estudios de entrenamiento. Falta lo que produce un envío:
-preprocesar las imágenes, entrenar un modelo de imagen y escribir el notebook de inferencia.
+El objetivo es predecir la probabilidad de 12 anomalías y patologías musculoesqueléticas a partir de estudios de resonancia magnética (RM) de rodilla en tres planos anatómicos (axial, coronal y sagital).
 
-## La competencia en una página
+---
 
-| | |
-|---|---|
-| Tarea | Para cada estudio de RM de rodilla, dar una probabilidad para cada uno de 12 hallazgos |
-| Hallazgos | ACL, MCL, Medial Meniscus, Lateral Meniscus, Medial OA, Lateral OA, PF OA, Effusion, Synovitis, Baker's, Contusion, Fracture |
-| Métrica | AUC ROC promediada sobre los 12 hallazgos. Solo importa el orden de las probabilidades, no su calibración |
-| Envío | Notebook de Kaggle, máximo 9 h, sin internet; se permiten modelos preentrenados públicos |
-| Test | Unos 1,300 estudios, solo imágenes: en test no hay informe |
-| Límite de inscripción y de equipos | 15 de octubre de 2026, 23:59 UTC |
-| Límite de envío final | 22 de octubre de 2026, 23:59 UTC |
-| Envíos | 5 por día, 2 finales; equipos de hasta 5 personas |
+## 👥 Créditos y Evolución del Proyecto
 
-## El problema central: casi no hay etiquetas
+Este repositorio documenta el trabajo colaborativo estructurado en dos fases:
 
-De los 4,407 estudios de entrenamiento, solo 58 traen las 12 etiquetas. Los otros 4,349 traen
-únicamente el informe radiológico en texto libre, en al menos nueve idiomas. Además, los 58
-etiquetados no son representativos: tienen de media 4.1 hallazgos por estudio, frente a unos 2.7 en
-el resto.
+* **Trabajo original y modelos base (Owen):**
+  * Análisis exploratorio de datos (EDA), inventario y control geométrico de las 24,371 series y 819,078 cortes DICOM.
+  * Pipeline de derivación de pseudoetiquetas clínicas a partir de 4,407 informes radiológicos en texto libre mediante LLM local (`qwen2.5:72b`), superando la limitación de disponer de solo 58 estudios con etiquetas ground truth completas.
+  * Diseño e implementación de la arquitectura de red `KneeNet` en PyTorch.
+  * **Entrenamiento de los modelos base individuales:**
+    * **ResNet-34** (checkpoint época 7, `best_oficial.pt`), con el que se obtuvo la puntuación baseline de **0.875** en el leaderboard público de Kaggle.
+    * **ConvNeXt-Tiny** (checkpoint época 5, `best_oficial.pt`).
+* **Integración, evaluación y despliegue del ensamble (Joako / FernyBoy):**
+  * Aislamiento determinista de infraestructura personal (rutas de salida en `runs_joako`, logs, canalizaciones SLURM, base de datos de MLflow aislada y caché de GPU).
+  * Formulación de la hipótesis del ensamble multiarquitectura (combinación 50/50 de ResNet-34 y ConvNeXt-Tiny para integrar representaciones residuales clásicas y de kernel amplio).
+  * **Diseño e implementación del evaluador comparativo pareado** (`rsna/evaluar_ensamble.py` y `jobs/evaluar_ensamble.slurm`), con métricas macro por split, desglose por patología, matrices de correlación y análisis de incertidumbre mediante remuestreo bootstrap (500 réplicas, IC 95%).
+  * Verificación empírica local de la mejora del ensamble tanto en validación interna como en el conjunto oficial.
+  * **Construcción y validación del paquete autónomo de inferencia offline** (`inferencia.ipynb`, dependencias DICOM offline, validaciones de integridad en `rsna/inferir.py` y smoke test).
+  * Generación del envío oficial a Kaggle logrando una puntuación de **0.897** (**+0.022** sobre el baseline).
 
-La estrategia es derivar etiquetas de los informes con un modelo de lenguaje local, entrenar con
-ellas un modelo de imagen y reservar los 58 estudios oficiales para validar.
+---
 
-## Qué está hecho
+## 🏆 Resumen de Resultados
 
-### 1. Exploración y verificación del dataset (`eda/`)
+### 1. Puntuación Oficial en Kaggle (Test Oculto de la Competencia, ~1,300 estudios)
+La evaluación ciega oficial en la plataforma de Kaggle confirmó la generalización del ensamble:
 
-- 4,407 estudios, 24,371 series y 819,078 archivos DICOM; los CSV y el disco coinciden.
-- Barrido de las 819,078 cabeceras: ningún archivo ilegible.
-- Verificación por serie: ninguna con cortes repetidos, espaciado irregular ni geometría
-  inconsistente entre cortes.
-- Adquisición muy heterogénea: cinco fabricantes, 1.5 T y 3 T, 221 tamaños de matriz, píxel de
-  0.07 a 1.17 mm. Las intensidades crudas no son comparables entre equipos.
-- Todos los estudios tienen los tres planos. `Fluid_Sensitive` y `Fat_Suppression` son idénticas en
-  entrenamiento, pero Kaggle advierte que en test pueden diferir.
+| Solución | Backbone / Composición | Kaggle Public Score (Macro AUC) | Delta vs Baseline |
+|---|---|:---:|:---:|
+| **Baseline (Owen)** | ResNet-34 (época 7) | 0.8750 | — |
+| **Ensamble (Joako)** | **ResNet-34 (50%) + ConvNeXt-Tiny (50%)** | **0.8970** | **+0.0220** |
 
-### 2. Etiquetas derivadas de los informes (`etiquetas/`)
+---
 
-- **Piloto con los 58 estudios oficiales:** leyendo solo el informe se coincide con la etiqueta
-  oficial en el 84 % de las decisiones. El resto no es ruido al azar: las etiquetas oficiales
-  aplican umbrales que el informe no declara, y parte de la información no está en el texto.
-- **Extracción completa:** `qwen2.5:72b` (local, con Ollama) leyó los 4,407 informes sin errores.
-  Para cada hallazgo devuelve un estado (presente, posible, ausente, no mencionado) y una gravedad.
-- **Calidad medida en los 58:** acuerdo del 83 % con las etiquetas oficiales.
+### 2. Evaluación Comparativa Local Pareada
 
-| Se deriva bien del informe | Se deriva mal |
-|---|---|
-| ACL y MCL (95 %), menisco medial (91 %), artrosis patelofemoral y Baker's (88 %) | Derrame (72 %), contusión (71 %), sinovitis (69 %) |
+Se evaluaron ambos modelos base y su ensamble sobre dos particiones locales:
 
-- **Un modelo médico no mejora el acierto.** MedGemma 27B de texto obtiene el mismo 83 %, aunque
-  es cuatro veces más rápido (5 s por informe con cuatro en paralelo, frente a 21 s).
-- La sinovitis no se menciona en el 72 % de los informes; el quiste de Baker, en el 42 %.
+* **Validación Interna (`val_int`, 415 estudios en Fold 0):** Casos **nunca vistos** durante el entrenamiento de los pesos. Las etiquetas son pseudoetiquetas derivadas de reportes con LLM, filtradas para casos con evidencia clínica ($t \ge 0.5$ con peso $w > 0$).
+* **Conjunto Oficial (`val_oficial`, 58 estudios Gold):** Anotaciones ground truth completas de radiólogos expertos de RSNA.
+  > [!WARNING]
+  > **Advertencia sobre `val_oficial`:** Este conjunto **no constituye una validación independiente**, ya que estos mismos 58 estudios participaron previamente en la calibración y ajuste de umbrales para la extracción de pseudoetiquetas. Además, su tamaño muestral reducido ($N=58$) amplía la incertidumbre estadística; sus resultados deben interpretarse únicamente como chequeo de coherencia histórica.
 
-### 3. Pruebas con un modelo que mira las imágenes (`imagenes/`)
+| Partición | Métrica / Modelo | ResNet-34 | ConvNeXt-Tiny | Ensamble (50/50) | $\Delta$ Ensamble vs ResNet | Prob. Mejora (Bootstrap) |
+|---|---|:---:|:---:|:---:|:---:|:---:|
+| **`val_int`**<br>(N=415) | **Macro AUC**<br>IC 95% | 0.8435<br>[0.8264, 0.8640] | 0.8518<br>[0.8333, 0.8716] | **0.8574**<br>[0.8401, 0.8772] | **+0.0139**<br>[+0.0074, +0.0201] | **100.0%** (vs ResNet)<br>**97.6%** (vs ConvNeXt) |
+| **`val_oficial`**<br>(N=58 Gold) | **Macro AUC**<br>IC 95% | 0.8581<br>[0.8233, 0.8898] | 0.8769<br>[0.8460, 0.9091] | **0.8793**<br>[0.8485, 0.9113] | **+0.0211**<br>[+0.0079, +0.0347] | **100.0%** (vs ResNet)<br>**66.4%** (vs ConvNeXt) |
 
-MedGemma 1.5 4B, sin ningún ajuste, sobre las resonancias de los 58 estudios oficiales:
+---
 
-- Sus respuestas de sí o no están sesgadas y no sirven como etiquetas.
-- Sus probabilidades sí ordenan parcialmente los casos: AUC medio de 0.61 a 0.66 según el plano.
-- Donde más ve es en derrame (hasta 0.89) y sinovitis (hasta 0.82), justo donde el texto flojea.
-  En ligamentos y meniscos queda cerca del azar.
-- Darle todos los cortes del estudio no mejora y tarda cuatro veces más.
+### 3. Detalle por Hallazgo en Validación Interna (`val_int`)
+Muestra cómo el ensamble combina la estabilidad de ResNet-34 en ligamentos con la mayor potencia de ConvNeXt-Tiny en patologías óseas y colaterales:
 
-Ese 0.66 queda como referencia a superar por un modelo entrenado.
+| Patología | Casos (+) / Evaluable | AUC ResNet-34 | AUC ConvNeXt | AUC Ensamble | Ganancia ($\Delta$) | Correlación ($r$) |
+|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Fracture** | 34 / 361 | 0.7551 | 0.8426 | **0.8195** | **+0.0644** | 0.8037 |
+| **MCL** | 37 / 389 | 0.7516 | 0.8043 | **0.7988** | **+0.0471** | 0.7448 |
+| **Contusion** | 32 / 370 | 0.7565 | 0.8055 | **0.7911** | **+0.0346** | 0.8882 |
+| **Baker's** | 50 / 238 | 0.9014 | 0.9299 | **0.9216** | **+0.0202** | 0.8885 |
+| **Synovitis** | 71 / 119 | 0.8238 | 0.8398 | **0.8407** | **+0.0169** | 0.9176 |
+| **Lateral Meniscus** | 65 / 384 | 0.8155 | 0.8213 | **0.8254** | **+0.0098** | 0.8417 |
+| **Medial Meniscus** | 183 / 394 | 0.9153 | 0.9106 | **0.9231** | **+0.0078** | 0.8919 |
+| **Effusion** | 243 / 387 | 0.9051 | 0.8991 | **0.9077** | **+0.0026** | 0.9474 |
+| **Lateral OA** | 71 / 348 | 0.8406 | 0.8168 | **0.8385** | -0.0021 | 0.9062 |
+| **PF OA** | 112 / 351 | 0.8623 | 0.8325 | **0.8561** | -0.0062 | 0.9139 |
+| **Medial OA** | 127 / 349 | 0.8749 | 0.8502 | **0.8676** | -0.0073 | 0.9410 |
+| **ACL** | 50 / 388 | 0.9203 | 0.8686 | **0.8988** | -0.0214 | 0.8881 |
 
-## Qué falta
+---
 
-1. **Envío trivial** a Kaggle, para comprobar el circuito completo.
-2. **Entorno de PyTorch para ROCm**, siguiendo la receta de `/shared/ejemplos_scripts/pytorch/`.
-3. **Preprocesamiento de imágenes:** ordenar los cortes por posición geométrica, normalizar la
-   intensidad por serie, llevar a un tamaño común y guardar en un formato rápido de leer.
-4. **Tabla de entrenamiento** a partir de la extracción: valores graduados según estado y gravedad,
-   con "no mencionado" como dato faltante.
-5. **Primer modelo de imagen**, validado con los 58 estudios oficiales.
-6. **Notebook de inferencia** para Kaggle, que debe leer DICOM comprimido (JPEG Lossless,
-   JPEG 2000), que en entrenamiento no aparece pero Kaggle anuncia para test.
+## 🧠 Arquitectura de Inferencia y Ensamble
 
-## Estructura del repositorio
-
-| Carpeta | Contenido |
-|---|---|
-| `eda/` | Exploración: CSV, inventario de disco, cabeceras DICOM, verificación de series. Ver `eda/README.md` |
-| `etiquetas/` | Extracción de etiquetas con Ollama, evaluación contra las oficiales y consolidación |
-| `imagenes/` | Prueba de MedGemma 1.5 sobre las resonancias |
-| `jobs/` | Scripts de SLURM. Todo lo que tarda o lee muchos archivos se ejecuta desde aquí |
-| `.claude/` | Skill `yuca-hpc-ops` y guardarraíl para trabajar con Claude Code en el cluster |
-
-Jobs principales, lanzados desde `code/`:
-
-```bash
-sbatch jobs/cabeceras.slurm                      # barrido de cabeceras DICOM
-sbatch jobs/verificar_series.slurm               # geometría y consistencia por serie
-sbatch jobs/extraer_etiquetas.slurm              # extracción sobre los 58 etiquetados y su evaluación
-sbatch jobs/consolidar_etiquetas.slurm           # tabla única de la extracción y su revisión
-sbatch jobs/prueba_imagenes_medgemma.slurm 0     # MedGemma 1.5 sobre las imágenes de los 58
+```
+Estudio RM (Axial, Coronal, Sagital)
+                │
+                ├──────────────────────────────────────────────┐
+                ▼                                              ▼
+    ┌───────────────────────────┐                  ┌───────────────────────────┐
+    │  Backbone 1: ResNet-34    │                  │ Backbone 2: ConvNeXt-Tiny │
+    │  - 16 cortes seleccionados│                  │  - 16 cortes seleccionados│
+    │  - Crop central 288x288   │                  │  - Crop central 288x288   │
+    └─────────────┬─────────────┘                  └─────────────┬─────────────┘
+                  │ Probabilidades                               │ Probabilidades
+                  │ $P_{ResNet}$                                 │ $P_{ConvNeXt}$
+                  └──────────────────────┬───────────────────────┘
+                                         ▼
+                            ┌─────────────────────────┐
+                            │ Promedio Simple (50/50) │
+                            │ $P = 0.5 P_1 + 0.5 P_2$ │
+                            └────────────┬────────────┘
+                                         ▼
+                            Predicciones Finales (12 AUC)
 ```
 
-Cada job escribe en `/lustre/proyectos/p082/runs/<jobid>/` y guarda ahí el commit con el que corrió.
+1. **Entrada Multi-Corte y Multi-Vista:** Para cada estudio se cargan 16 cortes distribuidos a lo largo del volumen en los tres planos anatómicos (axial, coronal, sagital) recortados al centro a $288 \times 288$.
+2. **Backbones Heterogéneos:**
+   * **ResNet-34:** Fuerte rendimiento y estabilidad en ligamentos (ACL: 0.9203).
+   * **ConvNeXt-Tiny:** Capacidad superior en fracturas (+0.0875) y colaterales (+0.0527).
+3. **Fusión No Paramétrica:** Promedio aritmético directo entre las salidas sigmoideas de ambos modelos, mitigando la varianza de predicción individual sin añadir hiperparámetros que arriesguen sobreajuste.
 
-## Dónde está cada cosa en el cluster
+---
 
-| Ruta bajo `/lustre/proyectos/p082/` | Qué es |
-|---|---|
-| `kaggle_data/` | Dataset de la competencia. **Solo lectura** |
-| `code/` | Este repositorio |
-| `runs/<jobid>/` | Salidas de los jobs |
-| `runs/2079118/` | Extracción consolidada de Qwen para los 4,407 estudios |
-| `modelos/` | Modelos propios del proyecto (Ollama y GGUF) |
-| `/lustre/proyectos/ollama-models/` | Modelos compartidos del cluster, incluido `qwen2.5:72b` |
+## 📦 Pipeline de Inferencia Offline para Kaggle
 
-## Reglas que hay que respetar
+El entorno de submission de Kaggle opera **sin acceso a internet**, con un límite de **9 horas de ejecución** y lectura de series DICOM comprimidas (JPEG Lossless / JPEG 2000).
 
-- **Los datos no salen del cluster.** La regla 2.4.b de la competencia y la licencia MIRA de RSNA
-  prohíben transmitir o publicar cualquier parte del dataset. No se suben a GitHub ni a servicios
-  externos informes, imágenes, identificadores de estudio ni etiquetas derivadas. El `.gitignore`
-  excluye por eso todos los CSV, JSONL, DICOM y arrays.
-- **Sin compartir código ni datos con otros equipos** de la competencia.
-- **Las etiquetas a mano solo sobre entrenamiento.** Etiquetar a mano datos de test está prohibido.
-- **Nada de desactivar la verificación de certificados.** La red de la universidad intercepta
-  parte del tráfico HTTPS (Hugging Face entre otros). Lo que no se puede descargar desde el cluster
-  se baja fuera, se verifica su SHA-256 y se sube; `jobs/registrar_gguf_ollama.slurm` hace esa
-  comprobación.
+El paquete de inferencia (`inferencia.ipynb` y `rsna/inferir.py`) está diseñado de forma autónoma:
+* **Dependencias Offline:** Instalación local desde ruedas `.whl` (`pydicom`, `pylibjpeg`, `pylibjpeg-libjpeg`, `pylibjpeg-openjpeg`, `python-gdcm`).
+* **Validación de Integridad:** Comprobaciones dinámicas (`assert labels`, `assert backbone`) para garantizar el orden de clases y arquitecturas soportadas.
+* **Optimización de Ejecución:** Lectura y descompresión DICOM directa, ordenamiento espacial por `ImagePositionPatient[2]`, modo de memoria `channels_last` y precisión mixta (`torch.amp.autocast`).
 
-## Requisitos
+---
 
-- Python 3.12 de `/apps/miniconda3` con pandas, pyarrow, pydicom, matplotlib y scikit-learn.
-- Módulos `rocm/7.2.2` y `ollama/0.34.0` para los jobs con modelos de lenguaje.
-- Cuenta de SLURM `p082`; particiones `cpu` y `gpu` (AMD Instinct MI210).
+## 🛠️ Estructura del Repositorio
+
+```text
+├── eda/                          # Exploración de metadatos, cabeceras DICOM y verificación geométrica
+├── etiquetas/                    # Extracción de pseudoetiquetas con LLM y consolidación
+├── imagenes/                     # Pruebas preliminares con modelos multimodales
+├── jobs/                         # Scripts de ejecución por lotes SLURM para cluster HPC
+│   ├── entrenar.slurm            # Pipeline de entrenamiento parametrizable
+│   ├── inferir.slurm             # Inferencia y generación de predicciones
+│   ├── evaluar_ensamble.slurm    # Evaluación comparativa pareada
+│   └── ...
+├── rsna/                         # Código fuente del modelo y utilidades
+│   ├── dataset.py                # DataLoader de tensores volumétricos
+│   ├── modelo.py                 # Definición de KneeNet y arquitecturas soportadas
+│   ├── entrenar.py               # Bucle de entrenamiento multietiqueta (BCE con pesos)
+│   ├── inferir.py                # Motor de inferencia autónomo con aserciones de consistencia
+│   └── evaluar_ensamble.py       # Evaluador comparativo pareado y análisis bootstrap
+├── inferencia.ipynb              # Notebook de inferencia para envío a Kaggle
+└── .gitignore                    # Reglas de exclusión de datos médicos, checkpoints y ruedas
+```
+
+---
+
+## 🚀 Requisitos y Reproducibilidad
+
+### Dependencias Principales
+* Python $\ge 3.10$
+* PyTorch $\ge 2.0$ (con aceleración ROCm o CUDA)
+* `pydicom`, `pylibjpeg`, `pandas`, `scikit-learn`, `numpy`
+
+### Ejecución de la Evaluación Pareada
+```bash
+python rsna/evaluar_ensamble.py \
+    --data path/to/preproc/v1_train \
+    --labels path/to/labels.parquet \
+    --ckpt-resnet path/to/resnet34/best_oficial.pt \
+    --ckpt-convnext path/to/convnext/best_oficial.pt \
+    --out ./resultados_evaluacion \
+    --batch 8
+```
+
+---
+
+## 🔮 Trabajo Futuro y Mejoras Experimentales Seguras
+1. **Aumentos y TTA Invariantes a Lateralidad:**
+   * Jitter sutil de contraste y ventana (window/level), simulando la variabilidad de adquisición entre fabricantes sin alterar la anatomía.
+   * Micro-rotaciones en el plano ($\pm 3^\circ$ a $\pm 5^\circ$) y pequeñas traslaciones ($\pm 4-8$ px) sin invertir ejes.
+   *(Nota metodológica: Se evitan deliberadamente flips horizontales ingenuos, ya que invierten la anatomía medial/lateral alterando patologías de meniscos y ligamentos).*
+2. **Ponderación Óptima por Patología (Weighted Blending):**
+   * Optimizar pesos específicos $w_c \in [0, 1]$ por patología mediante regresión logística sobre `val_int` (e.g. mayor peso a ResNet en ACL; mayor a ConvNeXt en Fracture/MCL).
+3. **Calibración Post-Hoc de Probabilidades:**
+   * Evaluar empíricamente técnicas de calibración como Platt scaling o regresión isotónica por patología para determinar si mejoran la fiabilidad probabilística o si introducen distorsiones en el ordenamiento relativo.
+4. **Mecanismo de Atención entre Cortes (Slice Attention):**
+   * Incorporar atención secuencial o transformer ligero entre cortes para aprender a ponderar los cortes con lesiones focales en lugar de un promedio estático.
+5. **Diversidad Arquitectónica Adicional:**
+   * Evaluar un backbone Transformer (e.g. Swin Transformer) para enriquecer el ensamble con un sesgo inductivo complementario a las CNNs.
