@@ -1,0 +1,148 @@
+"""Convierte un estudio DICOM de rodilla en un tensor de tamaño fijo.
+
+La misma lógica debe correr en el cluster (entrenamiento) y en el notebook de Kaggle (inferencia),
+así que este módulo solo depende de numpy, pydicom y OpenCV, y no lee nada fuera del estudio.
+
+Salida por estudio: uint8 de forma (4, DEPTH, SIZE, SIZE), una "ranura" por tipo de serie:
+    0 sagital sensible a líquido   1 sagital no sensible a líquido
+    2 coronal sensible a líquido   3 axial sensible a líquido
+Si falta la serie preferida de un plano se usa la otra del mismo plano; si el plano no tiene más
+series, la ranura queda a cero y se marca como ausente.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import cv2
+import numpy as np
+import pydicom
+
+DEPTH, SIZE = 32, 320
+SLOTS = [("Sagittal", 1), ("Sagittal", 0), ("Coronal", 1), ("Axial", 1)]
+SLOT_NAMES = ["sag_fs", "sag_nofs", "cor_fs", "ax_fs"]
+
+# Orientación canónica en coordenadas del paciente (LPS: +x izquierda, +y posterior, +z craneal):
+# hacia dónde crecen las columnas, hacia dónde crecen las filas y en qué sentido se ordenan los cortes.
+CANON = {
+    "Sagittal": (np.array([0, 1, 0.0]), np.array([0, 0, -1.0]), np.array([1, 0, 0.0])),
+    "Coronal": (np.array([1, 0, 0.0]), np.array([0, 0, -1.0]), np.array([0, 1, 0.0])),
+    "Axial": (np.array([1, 0, 0.0]), np.array([0, 1, 0.0]), np.array([0, 0, 1.0])),
+}
+
+
+def select_series(series: list[dict]) -> list[dict | None]:
+    """Elige una serie por ranura.
+
+    `series`: dicts con SeriesInstanceUID, Anatomical_Plane, Fluid_Sensitive y n_slices.
+    Dentro de cada grupo se prefiere la serie cuyo número de cortes se acerca más a DEPTH, lo que
+    evita las adquisiciones 3D de cientos de cortes cuando hay una 2D equivalente.
+    """
+    def best(cands: list[dict]) -> dict | None:
+        cands = [c for c in cands if c["n_slices"] >= 5]
+        return min(cands, key=lambda c: (abs(c["n_slices"] - DEPTH), c["SeriesInstanceUID"])) if cands else None
+
+    chosen: list[dict | None] = []
+    used: set[str] = set()
+    for plane, fs in SLOTS:
+        free = [s for s in series if s["Anatomical_Plane"] == plane and s["SeriesInstanceUID"] not in used]
+        pick = best([s for s in free if int(s["Fluid_Sensitive"]) == fs]) or best(free)
+        if pick:
+            used.add(pick["SeriesInstanceUID"])
+        chosen.append(pick)
+    return chosen
+
+
+def read_series(path: str | os.PathLike, plane: str) -> tuple[np.ndarray, tuple[float, float], dict]:
+    """Lee una serie y la devuelve en orientación canónica: (cortes, filas, columnas) float32."""
+    t_col, t_row, t_slice = CANON[plane]
+    items = []
+    for name in os.listdir(path):
+        if not name.endswith(".dcm"):
+            continue
+        ds = pydicom.dcmread(os.path.join(path, name))
+        arr = ds.pixel_array.astype(np.float32)
+        if arr.ndim == 3:  # multicuadro o color: no se espera, se toma el cuadro central
+            arr = arr[arr.shape[0] // 2]
+        if ds.get("PhotometricInterpretation") == "MONOCHROME1":
+            arr = arr.max() - arr
+        iop = np.asarray(ds.get("ImageOrientationPatient", [1, 0, 0, 0, 1, 0]), dtype=float)
+        pos = np.asarray(ds.get("ImagePositionPatient", [0, 0, float(ds.get("InstanceNumber", 0))]), dtype=float)
+        sp = ds.get("PixelSpacing", [1.0, 1.0])
+        items.append((float(pos @ t_slice), arr, iop, (float(sp[0]), float(sp[1]))))
+    if not items:
+        raise ValueError("serie sin cortes")
+    shape = items[len(items) // 2][1].shape
+    items = [it for it in items if it[1].shape == shape]
+    items.sort(key=lambda it: it[0])
+    vol = np.stack([it[1] for it in items])
+    u, v = items[0][2][:3], items[0][2][3:]      # u: hacia dónde crecen las columnas; v: las filas
+    row_mm, col_mm = items[0][3]
+    info = {"transpuesta": False, "volteo_cols": False, "volteo_filas": False}
+    if abs(u @ t_col) < abs(u @ t_row):          # los ejes de la imagen están intercambiados
+        vol = vol.transpose(0, 2, 1)
+        u, v = v, u
+        row_mm, col_mm = col_mm, row_mm
+        info["transpuesta"] = True
+    if u @ t_col < 0:
+        vol = vol[:, :, ::-1]
+        info["volteo_cols"] = True
+    if v @ t_row < 0:
+        vol = vol[:, ::-1, :]
+        info["volteo_filas"] = True
+    return np.ascontiguousarray(vol), (row_mm, col_mm), info
+
+
+def to_fixed(vol: np.ndarray, spacing: tuple[float, float], depth: int = DEPTH, size: int = SIZE) -> np.ndarray:
+    """Normaliza la intensidad y lleva el volumen a (depth, size, size) uint8."""
+    sample = vol[:, ::4, ::4]
+    lo, hi = np.percentile(sample, [0.5, 99.5])
+    vol = np.clip((vol - lo) / max(hi - lo, 1e-6), 0, 1)
+
+    # Remuestreo en profundidad: interpolación lineal entre cortes vecinos.
+    n = vol.shape[0]
+    pos = np.linspace(0, n - 1, depth)
+    i0 = np.floor(pos).astype(int)
+    i1 = np.minimum(i0 + 1, n - 1)
+    w = (pos - i0).astype(np.float32)[:, None, None]
+    vol = vol[i0] * (1 - w) + vol[i1] * w
+
+    # Relleno a campo de visión cuadrado en milímetros, para no deformar la anatomía.
+    h_mm, w_mm = vol.shape[1] * spacing[0], vol.shape[2] * spacing[1]
+    side = max(h_mm, w_mm)
+    pad_h = int(round((side - h_mm) / spacing[0] / 2))
+    pad_w = int(round((side - w_mm) / spacing[1] / 2))
+    if pad_h or pad_w:
+        vol = np.pad(vol, ((0, 0), (pad_h, pad_h), (pad_w, pad_w)))
+
+    interp = cv2.INTER_AREA if vol.shape[1] > size else cv2.INTER_LINEAR
+    out = np.stack([cv2.resize(s, (size, size), interpolation=interp) for s in vol])
+    return np.clip(out * 255 + 0.5, 0, 255).astype(np.uint8)
+
+
+def build_study(study_dir: str | os.PathLike, series: list[dict], depth: int = DEPTH, size: int = SIZE) -> tuple[np.ndarray, dict]:
+    """Tensor (4, depth, size, size) uint8 de un estudio y un resumen de lo que se usó."""
+    study_dir = Path(study_dir)
+    for s in series:
+        if "n_slices" not in s:
+            d = study_dir / s["SeriesInstanceUID"]
+            s["n_slices"] = sum(n.endswith(".dcm") for n in os.listdir(d)) if d.is_dir() else 0
+    out = np.zeros((len(SLOTS), depth, size, size), dtype=np.uint8)
+    info: dict = {}
+    for k, pick in enumerate(select_series(series)):
+        name = SLOT_NAMES[k]
+        info[f"{name}_presente"] = False
+        if pick is None:
+            continue
+        try:
+            vol, spacing, o = read_series(study_dir / pick["SeriesInstanceUID"], pick["Anatomical_Plane"])
+            out[k] = to_fixed(vol, spacing, depth, size)
+            info.update({f"{name}_presente": True, f"{name}_serie": pick["SeriesInstanceUID"],
+                         f"{name}_fs": int(pick["Fluid_Sensitive"]), f"{name}_cortes": int(vol.shape[0]),
+                         f"{name}_filas": int(vol.shape[1]), f"{name}_cols": int(vol.shape[2]),
+                         f"{name}_mm": float(spacing[0]), f"{name}_transpuesta": o["transpuesta"],
+                         f"{name}_volteo_cols": o["volteo_cols"], f"{name}_volteo_filas": o["volteo_filas"],
+                         f"{name}_media": float(out[k].mean())})
+        except Exception as exc:  # una serie ilegible deja su ranura vacía, no pierde el estudio
+            info[f"{name}_error"] = f"{type(exc).__name__}: {exc}"[:200]
+    return out, info
