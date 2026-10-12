@@ -1,0 +1,25 @@
+# Entorno de entrenamiento en Yuca (GPU AMD Instinct MI210, ROCm).
+# Combinación de PyTorch documentada por los administradores en /shared/ejemplos_scripts/pytorch/.
+# Crear e instalar desde el nodo de login (los nodos de cómputo no tienen salida fiable a internet):
+#   /apps/miniconda3/bin/python -m venv /lustre/proyectos/p082/venvs/rsna
+#   /lustre/proyectos/p082/venvs/rsna/bin/pip install --no-cache-dir -r requirements.txt
+--extra-index-url https://download.pytorch.org/whl/rocm6.4
+torch==2.8.0+rocm6.4
+torchvision==0.23.0+rocm6.4
+
+numpy
+pandas
+pyarrow
+scipy
+scikit-learn
+pillow
+opencv-python-headless
+matplotlib
+tqdm
+timm
+
+# Lectura de DICOM, incluidas las sintaxis comprimidas que Kaggle anuncia para test
+pydicom
+pylibjpeg
+pylibjpeg-libjpeg
+pylibjpeg-openjpeg
