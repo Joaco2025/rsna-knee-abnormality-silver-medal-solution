@@ -15,6 +15,8 @@
 # Lanzar desde code/:  sbatch jobs/entrenar.slurm [OPCIONES de entrenar.py...]
 #   p. ej.  sbatch jobs/entrenar.slurm --epochs 8 --backbone resnet34
 #   prueba: sbatch --time=00:30:00 jobs/entrenar.slurm --limit 240 --epochs 1
+# Validación cruzada: como arreglo, cada tarea aparta la partición que le toca
+#   p. ej.  sbatch --array=0-4%2 jobs/entrenar.slurm --backbone resnet34 --folds 5
 # Los checkpoints y el historial quedan en runs/<jobid>/; las métricas, además, en MLflow
 # (base de datos SQLite en mlflow/mlflow.db, la misma que abre la aplicación de Open OnDemand).
 set -euo pipefail
@@ -48,6 +50,6 @@ echo "red=$BACKBONE pesos=${WEIGHTS:-ninguno}"
 
 # --- Trabajo -----------------------------------------------------------------
 "$PY" rsna/entrenar.py --data "$DATA" --labels "$LABELS" --out "$OUT" --mlflow "sqlite:///$PROJ/mlflow/mlflow.db" --mlflow-artifacts "$PROJ/mlflow/artifacts" \
-    --run-name "job-$SLURM_JOB_ID" ${WEIGHTS:+--weights "$WEIGHTS"} "$@"
+    --run-name "job-$SLURM_JOB_ID" ${WEIGHTS:+--weights "$WEIGHTS"} "$@" ${SLURM_ARRAY_TASK_ID:+--fold "$SLURM_ARRAY_TASK_ID"}
 
 echo "fin=$(date -Is)"
