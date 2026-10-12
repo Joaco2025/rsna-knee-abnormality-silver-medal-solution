@@ -53,15 +53,32 @@ def select_series(series: list[dict]) -> list[dict | None]:
     return chosen
 
 
+def _pixels(ds) -> np.ndarray:
+    """Píxeles de un corte. Tolera cabeceras que declaran 16 bits con datos de 8 (visto en train)."""
+    try:
+        return ds.pixel_array.astype(np.float32)
+    except ValueError:
+        raw = np.frombuffer(ds.PixelData, dtype=np.uint8)
+        rows, cols = int(ds.Rows), int(ds.Columns)
+        if raw.size < rows * cols:
+            raise
+        return raw[: rows * cols].reshape(rows, cols).astype(np.float32)
+
+
 def read_series(path: str | os.PathLike, plane: str) -> tuple[np.ndarray, tuple[float, float], dict]:
     """Lee una serie y la devuelve en orientación canónica: (cortes, filas, columnas) float32."""
     t_col, t_row, t_slice = CANON[plane]
     items = []
+    n_bad = 0
     for name in os.listdir(path):
         if not name.endswith(".dcm"):
             continue
-        ds = pydicom.dcmread(os.path.join(path, name))
-        arr = ds.pixel_array.astype(np.float32)
+        try:
+            ds = pydicom.dcmread(os.path.join(path, name))
+            arr = _pixels(ds)
+        except Exception:   # un corte ilegible se descarta; la serie sigue con los demás
+            n_bad += 1
+            continue
         if arr.ndim == 3:  # multicuadro o color: no se espera, se toma el cuadro central
             arr = arr[arr.shape[0] // 2]
         if ds.get("PhotometricInterpretation") == "MONOCHROME1":
@@ -78,7 +95,7 @@ def read_series(path: str | os.PathLike, plane: str) -> tuple[np.ndarray, tuple[
     vol = np.stack([it[1] for it in items])
     u, v = items[0][2][:3], items[0][2][3:]      # u: hacia dónde crecen las columnas; v: las filas
     row_mm, col_mm = items[0][3]
-    info = {"transpuesta": False, "volteo_cols": False, "volteo_filas": False}
+    info = {"transpuesta": False, "volteo_cols": False, "volteo_filas": False, "cortes_ilegibles": n_bad}
     if abs(u @ t_col) < abs(u @ t_row):          # los ejes de la imagen están intercambiados
         vol = vol.transpose(0, 2, 1)
         u, v = v, u
@@ -142,6 +159,7 @@ def build_study(study_dir: str | os.PathLike, series: list[dict], depth: int = D
                          f"{name}_filas": int(vol.shape[1]), f"{name}_cols": int(vol.shape[2]),
                          f"{name}_mm": float(spacing[0]), f"{name}_transpuesta": o["transpuesta"],
                          f"{name}_volteo_cols": o["volteo_cols"], f"{name}_volteo_filas": o["volteo_filas"],
+                         f"{name}_ilegibles": o["cortes_ilegibles"],
                          f"{name}_media": float(out[k].mean())})
         except Exception as exc:  # una serie ilegible deja su ranura vacía, no pierde el estudio
             info[f"{name}_error"] = f"{type(exc).__name__}: {exc}"[:200]
