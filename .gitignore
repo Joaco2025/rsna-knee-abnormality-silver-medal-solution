@@ -1,5 +1,5 @@
 # El repo solo lleva código, configuración y resultados pequeños de texto.
-# Datos, modelos, logs y secretos viven fuera (ver /lustre/proyectos/p082/{kaggle_data,runs,preproc}).
+# Datos, modelos, logs, artefactos pesados y secretos viven fuera del repositorio.
 
 # ---------- Datos de la competencia y derivados ----------
 data/
@@ -41,6 +41,10 @@ mlflow_artifacts/
 lightning_logs/
 *.db
 *.sqlite3
+
+# ---------- Paquetes de envío y dependencias locales ----------
+envios*/
+*.whl
 
 # ---------- Logs (SLURM y otros) ----------
 logs/

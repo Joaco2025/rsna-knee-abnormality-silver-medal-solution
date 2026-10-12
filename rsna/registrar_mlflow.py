@@ -16,24 +16,28 @@ import mlflow
 import pandas as pd
 
 PROJ = Path("/lustre/proyectos/p082")
-URI = f"sqlite:///{PROJ}/mlflow/mlflow.db"
+URI = f"sqlite:///{PROJ}/mlflow/mlflow_joako.db"
 METRICS = {"loss": "loss", "auc_interna": "auc_interna", "auc_oficial": "auc_oficial", "estudios_por_s": "estudios_por_s"}
 
 
 def params_from_log(job: str) -> dict:
     """Parámetros que el entrenamiento imprime en su primera línea de resumen."""
     out = {}
-    for log in (PROJ / "code" / "logs").glob(f"*_{job}.out"):
-        text = log.read_text(errors="ignore")
-        m = re.search(r"^entrenamiento=.*$", text, re.M)
-        if m:
-            out.update(dict(kv.split("=", 1) for kv in m.group(0).split() if "=" in kv))
-        m = re.search(r"^commit=(\w+)", text, re.M)
-        if m:
-            out["commit"] = m.group(1)
-        m = re.search(r"opciones=(.*)$", text, re.M)
-        if m:
-            out["opciones"] = m.group(1).strip()
+    log_dirs = [PROJ / "code_joako" / "logs", PROJ / "code" / "logs"]
+    for log_dir in log_dirs:
+        for log in log_dir.glob(f"*_{job}.out"):
+            text = log.read_text(errors="ignore")
+            m = re.search(r"^entrenamiento=.*$", text, re.M)
+            if m:
+                out.update(dict(kv.split("=", 1) for kv in m.group(0).split() if "=" in kv))
+            m = re.search(r"^commit=(\w+)", text, re.M)
+            if m:
+                out["commit"] = m.group(1)
+            m = re.search(r"opciones=(.*)$", text, re.M)
+            if m:
+                out["opciones"] = m.group(1).strip()
+        if out:
+            break
     return out
 
 
@@ -42,12 +46,30 @@ def main():
     ap.add_argument("jobs", nargs="+")
     args = ap.parse_args()
     mlflow.set_tracking_uri(URI)
-    exp = mlflow.set_experiment("rsna-knee")
+    artifacts_dir = PROJ / "mlflow" / "artifacts_joako"
+    exp = mlflow.get_experiment_by_name("rsna-knee")
+    if exp is None:
+        exp_id = mlflow.create_experiment("rsna-knee", artifact_location=str(artifacts_dir))
+        exp = mlflow.get_experiment(exp_id)
+    else:
+        if exp.artifact_location and Path(exp.artifact_location).resolve() != artifacts_dir.resolve():
+            raise SystemExit(
+                f"ERROR: Discrepancia en MLflow: el experimento 'rsna-knee' ya existe con artifact_location='{exp.artifact_location}', "
+                f"pero se requiere '{artifacts_dir}'. Deteniendo ejecución."
+            )
     client = mlflow.MlflowClient()
     for job in args.jobs:
-        hist_path = PROJ / "runs" / job / "historial.csv"
-        if not hist_path.exists():
-            print(f"{job}: sin historial.csv todavía")
+        p_joako = PROJ / "runs_joako" / job / "historial.csv"
+        p_owen = PROJ / "runs" / job / "historial.csv"
+        if p_joako.exists() and p_owen.exists():
+            raise SystemExit(f"ERROR: Ambigüedad para job {job}: existe historial.csv en runs_joako y en runs.")
+        elif p_joako.exists():
+            hist_path = p_joako
+        elif p_owen.exists():
+            print(f"[INFO] Job {job}: leyendo historial compartido de Owen (solo lectura): {p_owen}")
+            hist_path = p_owen
+        else:
+            print(f"{job}: sin historial.csv en runs_joako ni en runs")
             continue
         hist = pd.read_csv(hist_path)
         name = f"job-{job}"

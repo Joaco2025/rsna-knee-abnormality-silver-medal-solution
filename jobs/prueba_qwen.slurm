@@ -8,13 +8,14 @@
 #SBATCH --mem=64G
 #SBATCH --time=00:30:00
 #SBATCH --gres=gpu:1
-#SBATCH -o logs/%x_%j.out
-#SBATCH -e logs/%x_%j.err
+#SBATCH -D /lustre/proyectos/p082/code_joako
+#SBATCH -o /lustre/proyectos/p082/code_joako/logs/%x_%j.out
+#SBATCH -e /lustre/proyectos/p082/code_joako/logs/%x_%j.err
 
 # Prueba de humo: arranca Ollama DENTRO del job, carga un modelo de la carpeta compartida en una
 # MI210 y le pasa unos pocos informes. Comprueba que usa la GPU y mide la velocidad.
 # El servidor escucha solo en 127.0.0.1 y muere al terminar el job.
-# Lanzar desde code/:  sbatch jobs/prueba_qwen.slurm [MODELO]
+# Lanzar desde code_joako/:  sbatch jobs/prueba_qwen.slurm [MODELO]
 set -euo pipefail
 
 MODEL=${1:-qwen2.5:72b}
@@ -22,9 +23,9 @@ MODEL=${1:-qwen2.5:72b}
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
 export KNEE_DATA="$PROJ/kaggle_data/competitions/rsna-knee-abnormality-detection"   # SOLO LECTURA
-OUT="$PROJ/runs/${SLURM_JOB_ID:?}"                                                 # directorio nuevo por job
+OUT="$PROJ/runs_joako/${SLURM_JOB_ID:?}"                                                 # directorio nuevo por job
 mkdir -p "$OUT"
-cd "$PROJ/code"
+cd "$PROJ/code_joako"
 
 echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) modelo=$MODEL"
 echo "commit=$(git rev-parse --short HEAD)" | tee "$OUT/commit.txt"

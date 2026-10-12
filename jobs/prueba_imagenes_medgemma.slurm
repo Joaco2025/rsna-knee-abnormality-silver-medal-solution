@@ -8,13 +8,14 @@
 #SBATCH --mem=64G
 #SBATCH --time=01:00:00
 #SBATCH --gres=gpu:1
-#SBATCH -o logs/%x_%j.out
-#SBATCH -e logs/%x_%j.err
+#SBATCH -D /lustre/proyectos/p082/code_joako
+#SBATCH -o /lustre/proyectos/p082/code_joako/logs/%x_%j.out
+#SBATCH -e /lustre/proyectos/p082/code_joako/logs/%x_%j.err
 
 # Prueba sin ajuste de MedGemma 1.5 4B (con visión) sobre las resonancias de los estudios etiquetados.
 # Verifica los SHA-256 de los archivos subidos a mano, usa el llama-server que trae Ollama DENTRO
 # del job (solo 127.0.0.1, reiniciado en cada estudio) y le pasa los cortes axiales. Las imágenes no salen del nodo.
-# Lanzar desde code/:  sbatch jobs/prueba_imagenes_medgemma.slurm [N_ESTUDIOS] [por_hallazgo|json] [PLANOS] [OPCIONES...]
+# Lanzar desde code_joako/:  sbatch jobs/prueba_imagenes_medgemma.slurm [N_ESTUDIOS] [por_hallazgo|json] [PLANOS] [OPCIONES...]
 #   N_ESTUDIOS: 4 por defecto (prueba corta); 0 = los 58 etiquetados (ampliar --time).
 set -euo pipefail
 
@@ -26,9 +27,9 @@ EXTRA=("${@:4}")      # opciones adicionales para el script, p. ej. --negative-f
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
 export KNEE_DATA="$PROJ/kaggle_data/competitions/rsna-knee-abnormality-detection"   # SOLO LECTURA
-OUT="$PROJ/runs/${SLURM_JOB_ID:?}"                                                 # directorio nuevo por job
+OUT="$PROJ/runs_joako/${SLURM_JOB_ID:?}"                                                 # directorio nuevo por job
 mkdir -p "$OUT"
-cd "$PROJ/code"
+cd "$PROJ/code_joako"
 
 MODEL="$PROJ/modelos/gguf/medgemma-1.5-4b-it-Q8_0.gguf"
 MMPROJ="$PROJ/modelos/gguf/mmproj-F16.gguf"

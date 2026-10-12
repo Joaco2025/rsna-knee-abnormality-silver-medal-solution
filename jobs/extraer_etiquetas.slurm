@@ -8,18 +8,19 @@
 #SBATCH --mem=64G
 #SBATCH --time=01:30:00
 #SBATCH --gres=gpu:1
-#SBATCH -o logs/%x_%j.out
-#SBATCH -e logs/%x_%j.err
+#SBATCH -D /lustre/proyectos/p082/code_joako
+#SBATCH -o /lustre/proyectos/p082/code_joako/logs/%x_%j.out
+#SBATCH -e /lustre/proyectos/p082/code_joako/logs/%x_%j.err
 
 # Extrae estado y gravedad de los 12 hallazgos de los informes con un modelo local (Ollama) y,
 # si el subconjunto incluye estudios etiquetados, evalúa contra las etiquetas oficiales.
 # Ollama arranca DENTRO del job, escucha solo en 127.0.0.1 y muere al terminar.
 # Por defecto procesa solo los 58 estudios etiquetados (unos 30 minutos).
-# Lanzar desde code/:  sbatch jobs/extraer_etiquetas.slurm [labeled|unlabeled|all] [MODELO] [PARTE/N] [JSONL_PREVIO...]
+# Lanzar desde code_joako/:  sbatch jobs/extraer_etiquetas.slurm [labeled|unlabeled|all] [MODELO] [PARTE/N] [JSONL_PREVIO|JOBID...]
 # Para los ~4,349 no etiquetados (unos 21 s por informe) repartir en dos jobs y ampliar el tiempo:
 #   sbatch --time=16:00:00 jobs/extraer_etiquetas.slurm unlabeled qwen2.5:72b 0/2
 #   sbatch --time=16:00:00 jobs/extraer_etiquetas.slurm unlabeled qwen2.5:72b 1/2
-# Si un job se corta, relanzarlo pasando su extraccion.jsonl como JSONL_PREVIO para no repetir informes.
+# Si un job se corta, relanzarlo pasando su extraccion.jsonl o job ID como JSONL_PREVIO para no repetir informes.
 set -euo pipefail
 
 SUBSET=${1:-labeled}
@@ -31,12 +32,41 @@ PARALELO=${PARALELO:-1}        # informes en paralelo; se pasa con: sbatch --exp
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
 export KNEE_DATA="$PROJ/kaggle_data/competitions/rsna-knee-abnormality-detection"   # SOLO LECTURA
-OUT="$PROJ/runs/${SLURM_JOB_ID:?}"                                                 # directorio nuevo por job
+OUT="$PROJ/runs_joako/${SLURM_JOB_ID:?}"                                                 # directorio nuevo por job
 mkdir -p "$OUT"
-cd "$PROJ/code"
+cd "$PROJ/code_joako"
 
 echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) subset=$SUBSET modelo=$MODEL parte=$SHARD paralelo=$PARALELO"
 echo "commit=$(git rev-parse --short HEAD)" | tee "$OUT/commit.txt"
+
+resolver_extraccion() {
+    local ref="$1"
+    if [[ -f "$ref" ]]; then
+        echo "$ref"
+        return 0
+    fi
+    local f_joako="$PROJ/runs_joako/$ref/extraccion.jsonl"
+    local f_owen="$PROJ/runs/$ref/extraccion.jsonl"
+    local h_joako=0; local h_owen=0
+    [[ -r "$f_joako" ]] && h_joako=1
+    [[ -r "$f_owen" ]] && h_owen=1
+
+    if [[ $h_joako -eq 1 && $h_owen -eq 1 ]]; then
+        echo "ERROR: Ambigüedad para previo '$ref': existe tanto en runs_joako ($f_joako) como en runs ($f_owen). Especifica la ruta completa." >&2
+        return 2
+    elif [[ $h_joako -eq 1 ]]; then
+        echo "INFO: Previo '$ref' resuelto en runs_joako: $f_joako (personal)" >&2
+        echo "$f_joako"
+        return 0
+    elif [[ $h_owen -eq 1 ]]; then
+        echo "INFO: Previo '$ref' resuelto en runs: $f_owen (compartido Owen, solo lectura)" >&2
+        echo "$f_owen"
+        return 0
+    else
+        echo "ERROR: No se encontró 'extraccion.jsonl' para '$ref' en runs_joako ni en runs." >&2
+        return 1
+    fi
+}
 
 # --- Entorno -----------------------------------------------------------------
 PY=/apps/miniconda3/bin/python
@@ -69,8 +99,15 @@ for _ in $(seq 60); do
 done
 
 # --- Trabajo -----------------------------------------------------------------
+PREVIOS_RES=()
+for p in "${PREVIOS[@]}"; do
+    f=$(resolver_extraccion "$p")
+    [[ -r "$f" ]] || exit 1
+    PREVIOS_RES+=("$f")
+done
+
 "$PY" etiquetas/extraer.py --host "$OLLAMA_HOST" --model "$MODEL" --subset "$SUBSET" --shard "$SHARD" --workers "$PARALELO" \
-    --out "$OUT" ${PREVIOS[@]:+--skip-from "${PREVIOS[@]}"}
+    --out "$OUT" ${PREVIOS_RES[@]:+--skip-from "${PREVIOS_RES[@]}"}
 ollama ps
 
 if [[ "$SUBSET" != unlabeled ]]; then

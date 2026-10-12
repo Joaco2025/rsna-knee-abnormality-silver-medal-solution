@@ -7,12 +7,13 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
 #SBATCH --time=01:00:00
-#SBATCH -o logs/%x_%j.out
-#SBATCH -e logs/%x_%j.err
+#SBATCH -D /lustre/proyectos/p082/code_joako
+#SBATCH -o /lustre/proyectos/p082/code_joako/logs/%x_%j.out
+#SBATCH -e /lustre/proyectos/p082/code_joako/logs/%x_%j.err
 
 # Verifica el SHA-256 de un archivo GGUF subido a mano y, solo si coincide, lo registra en el
 # almacén de Ollama del proyecto. No usa red. Ollama vive solo dentro del job, en 127.0.0.1.
-# Lanzar desde code/:  sbatch jobs/registrar_gguf_ollama.slurm [GGUF] [SHA256] [NOMBRE]
+# Lanzar desde code_joako/:  sbatch jobs/registrar_gguf_ollama.slurm [GGUF] [SHA256] [NOMBRE]
 set -euo pipefail
 
 PROJ=/lustre/proyectos/p082
@@ -21,10 +22,10 @@ SHA=${2:-ef02e1b21e9833ef7cdab1cce0ac7b8280b825a9fefb0a7f42f7b03e9e46133a}   # p
 NAME=${3:-p082/medgemma-27b-text:q8_0}
 
 # --- Rutas -------------------------------------------------------------------
-export OLLAMA_MODELS="$PROJ/modelos/ollama"      # almacén de modelos del proyecto (persistente)
-OUT="$PROJ/runs/${SLURM_JOB_ID:?}"
+export OLLAMA_MODELS="$PROJ/modelos/ollama_joako"      # almacén de modelos personal (persistente)
+OUT="$PROJ/runs_joako/${SLURM_JOB_ID:?}"
 mkdir -p "$OUT" "$OLLAMA_MODELS"
-cd "$PROJ/code"
+cd "$PROJ/code_joako"
 
 echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) archivo=$GGUF nombre=$NAME"
 echo "commit=$(git rev-parse --short HEAD)" | tee "$OUT/commit.txt"

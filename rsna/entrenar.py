@@ -132,10 +132,16 @@ def main():
     ml = None
     if args.mlflow:
         try:
-            import mlflow
             mlflow.set_tracking_uri(args.mlflow)
-            if mlflow.get_experiment_by_name("rsna-knee") is None:
+            exp = mlflow.get_experiment_by_name("rsna-knee")
+            if exp is None:
                 mlflow.create_experiment("rsna-knee", artifact_location=args.mlflow_artifacts or None)
+            else:
+                if (args.mlflow_artifacts and exp.artifact_location and 
+                        Path(exp.artifact_location).resolve() != Path(args.mlflow_artifacts).resolve()):
+                    raise ValueError(
+                        f"Discrepancia en MLflow: experimento 'rsna-knee' tiene artifact_location='{exp.artifact_location}', "
+                        f"pero se solicitó '{args.mlflow_artifacts}'.")
             mlflow.set_experiment("rsna-knee")
             ml = mlflow
             ml.start_run(run_name=args.run_name or args.out.name)

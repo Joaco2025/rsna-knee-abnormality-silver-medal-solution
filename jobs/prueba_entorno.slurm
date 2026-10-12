@@ -8,17 +8,18 @@
 #SBATCH --mem=16G
 #SBATCH --time=00:10:00
 #SBATCH --gres=gpu:1
-#SBATCH -o logs/%x_%j.out
-#SBATCH -e logs/%x_%j.err
+#SBATCH -D /lustre/proyectos/p082/code_joako
+#SBATCH -o /lustre/proyectos/p082/code_joako/logs/%x_%j.out
+#SBATCH -e /lustre/proyectos/p082/code_joako/logs/%x_%j.err
 
 # Comprueba que el entorno del proyecto ve la GPU MI210 y que entrena e infiere en ella.
-# Lanzar desde code/:  sbatch jobs/prueba_entorno.slurm
+# Lanzar desde code_joako/:  sbatch jobs/prueba_entorno.slurm
 set -euo pipefail
 
 PROJ=/lustre/proyectos/p082
-OUT="$PROJ/runs/${SLURM_JOB_ID:?}"
+OUT="$PROJ/runs_joako/${SLURM_JOB_ID:?}"
 mkdir -p "$OUT"
-cd "$PROJ/code"
+cd "$PROJ/code_joako"
 
 echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is)"
 echo "commit=$(git rev-parse --short HEAD)" | tee "$OUT/commit.txt"

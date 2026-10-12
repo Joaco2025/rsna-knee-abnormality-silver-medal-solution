@@ -7,13 +7,14 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
 #SBATCH --time=03:00:00
-#SBATCH -o logs/%x_%j.out
-#SBATCH -e logs/%x_%j.err
+#SBATCH -D /lustre/proyectos/p082/code_joako
+#SBATCH -o /lustre/proyectos/p082/code_joako/logs/%x_%j.out
+#SBATCH -e /lustre/proyectos/p082/code_joako/logs/%x_%j.err
 
 # Descarga un modelo GGUF de Hugging Face al almacén de modelos del proyecto, con Ollama.
 # El servidor de Ollama vive solo dentro del job y escucha en 127.0.0.1.
 # No usa token: solo sirve para repositorios públicos sin restricción de acceso.
-# Lanzar desde code/:  sbatch jobs/descargar_modelo_ollama.slurm [REFERENCIA]
+# Lanzar desde code_joako/:  sbatch jobs/descargar_modelo_ollama.slurm [REFERENCIA]
 #   REFERENCIA con el formato de Ollama: hf.co/<usuario>/<repositorio>:<cuantización>
 set -euo pipefail
 
@@ -21,10 +22,10 @@ MODEL=${1:-hf.co/unsloth/medgemma-27b-text-it-GGUF:Q8_0}
 
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
-export OLLAMA_MODELS="$PROJ/modelos/ollama"      # almacén de modelos del proyecto (persistente)
-OUT="$PROJ/runs/${SLURM_JOB_ID:?}"                # log del servidor de este job
+export OLLAMA_MODELS="$PROJ/modelos/ollama_joako"      # almacén de modelos personal (persistente)
+OUT="$PROJ/runs_joako/${SLURM_JOB_ID:?}"                # log del servidor de este job
 mkdir -p "$OUT" "$OLLAMA_MODELS"
-cd "$PROJ/code"
+cd "$PROJ/code_joako"
 
 echo "job=$SLURM_JOB_ID nodo=$(hostname) inicio=$(date -Is) modelo=$MODEL destino=$OLLAMA_MODELS"
 echo "commit=$(git rev-parse --short HEAD)" | tee "$OUT/commit.txt"

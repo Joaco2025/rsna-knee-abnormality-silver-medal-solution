@@ -15,7 +15,7 @@ from pathlib import Path
 import mlflow
 
 PROJ = Path("/lustre/proyectos/p082")
-URI = f"sqlite:///{PROJ}/mlflow/mlflow.db"
+URI = f"sqlite:///{PROJ}/mlflow/mlflow_joako.db"
 MODEL = "rsna-knee"
 
 
@@ -30,7 +30,17 @@ def main():
     args = ap.parse_args()
 
     mlflow.set_tracking_uri(URI)
-    exp = mlflow.set_experiment("rsna-knee")
+    artifacts_dir = PROJ / "mlflow" / "artifacts_joako"
+    exp = mlflow.get_experiment_by_name("rsna-knee")
+    if exp is None:
+        exp_id = mlflow.create_experiment("rsna-knee", artifact_location=str(artifacts_dir))
+        exp = mlflow.get_experiment(exp_id)
+    else:
+        if exp.artifact_location and Path(exp.artifact_location).resolve() != artifacts_dir.resolve():
+            raise SystemExit(
+                f"ERROR: Discrepancia en MLflow: el experimento 'rsna-knee' ya existe con artifact_location='{exp.artifact_location}', "
+                f"pero se requiere '{artifacts_dir}'. Deteniendo ejecución."
+            )
     client = mlflow.MlflowClient()
     found = client.search_runs([exp.experiment_id], f"tags.mlflow.runName = 'job-{args.job}'")
     if not found:
