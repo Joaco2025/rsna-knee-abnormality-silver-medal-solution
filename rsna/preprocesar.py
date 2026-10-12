@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""Preprocesa todos los estudios de un split: un .npy (4, 32, 320, 320) uint8 por estudio.
+"""Preprocesa todos los estudios de un split: un .npy (4, 32, lado, lado) uint8 por estudio.
 
-Uso:  python rsna/preprocesar.py --out DIR [--split train] [--workers 48] [--limit N] [--qa 12]
+Uso:  python rsna/preprocesar.py --out DIR [--split train] [--size 320] [--workers 48] [--limit N] [--qa 12]
 Salidas en DIR:
   <StudyInstanceUID>.npy   tensor del estudio
   meta.parquet             qué serie se usó en cada ranura, tamaños originales, orientación, errores
@@ -28,6 +28,7 @@ DATA = Path(os.environ.get(
     "KNEE_DATA", "/lustre/proyectos/p082/kaggle_data/competitions/rsna-knee-abnormality-detection"))
 OUT: Path = Path(".")
 SPLIT = "train"
+SIDE = SIZE
 
 
 def work(task: tuple[str, list[dict]]) -> dict:
@@ -35,7 +36,7 @@ def work(task: tuple[str, list[dict]]) -> dict:
     rec = {"StudyInstanceUID": uid}
     t0 = time.time()
     try:
-        arr, info = build_study(DATA / f"{SPLIT}_series" / uid, series)
+        arr, info = build_study(DATA / f"{SPLIT}_series" / uid, series, size=SIDE)
         rec.update(info)
         tmp = OUT / f".{uid}.tmp.npy"
         np.save(tmp, arr)
@@ -57,15 +58,16 @@ def contact_sheet(path: Path, dest: Path) -> None:
 
 
 def main():
-    global OUT, SPLIT
+    global OUT, SPLIT, SIDE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--split", default="train", choices=["train", "test"])
     ap.add_argument("--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK", 8)))
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--size", type=int, default=SIZE, help="lado en píxeles del tensor guardado")
     ap.add_argument("--qa", type=int, default=0, help="número de hojas de contacto PNG a generar")
     args = ap.parse_args()
-    OUT, SPLIT = args.out, args.split
+    OUT, SPLIT, SIDE = args.out, args.split, args.size
     OUT.mkdir(parents=True, exist_ok=True)
 
     series = pd.read_csv(DATA / f"{SPLIT}_series.csv", dtype={"StudyInstanceUID": str, "SeriesInstanceUID": str})
@@ -75,7 +77,7 @@ def main():
         tasks = tasks[: args.limit]
     todo = [t for t in tasks if not (OUT / f"{t[0]}.npy").exists()]
     print(f"split={SPLIT} estudios={len(tasks)} ya_hechos={len(tasks) - len(todo)} por_hacer={len(todo)} "
-          f"forma=(4,{DEPTH},{SIZE},{SIZE}) procesos={args.workers}", flush=True)
+          f"forma=(4,{DEPTH},{SIDE},{SIDE}) procesos={args.workers}", flush=True)
 
     t0 = time.time()
     rows = []
@@ -95,7 +97,7 @@ def main():
     lines = [f"estudios en meta: {len(meta)}; con error: {int(meta['error'].notna().sum()) if 'error' in meta else 0}; "
              f"tiempo de esta ejecución: {(time.time() - t0) / 60:.1f} min"]
     n_files = sum(1 for n in os.listdir(OUT) if n.endswith(".npy") and not n.startswith("."))
-    lines.append(f"archivos .npy: {n_files}; tamaño estimado: {n_files * 4 * DEPTH * SIZE * SIZE / 1e9:.1f} GB")
+    lines.append(f"archivos .npy: {n_files}; tamaño estimado: {n_files * 4 * DEPTH * SIDE * SIDE / 1e9:.1f} GB")
     lines.append(f"{'ranura':<10}{'presente%':>10}{'es FS%':>8}{'cortes(med)':>12}{'matriz(med)':>12}{'mm(med)':>9}"
                  f"{'transp%':>9}{'volt.col%':>10}{'volt.fil%':>10}{'media':>7}{'errores':>8}")
     for name in SLOT_NAMES:

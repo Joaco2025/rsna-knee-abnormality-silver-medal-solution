@@ -198,6 +198,7 @@ def main():
                 print(f"MLflow: {type(exc).__name__}: {exc}", flush=True)
 
         state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop,
+                 "size": int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[-1]),
                  "epoch": epoch, "auc_interna": auc_int, "auc_oficial": auc_off, "labels": LABELS}
         torch.save(state, args.out / "last.pt")
         for key, val in (("oficial", auc_off), ("interna", auc_int)):
