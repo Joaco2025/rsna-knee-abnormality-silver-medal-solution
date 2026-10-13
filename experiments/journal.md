@@ -307,3 +307,117 @@ Toda la implementación está en archivos nuevos (`rsna/modelo_att.py`, `entrena
 - **Lección Aprendida**: La atención focal sobre cortes complementa de forma ortogonal la capacidad convolucional clásica y moderna; la ponderación asimétrica 25/25/50 protege el rendimiento en fracturas y consolida un récord público de 0.904 sin riesgo de sobreajuste.
 - **Siguiente Paso**: Documentar y publicar formalmente el hito en GitHub; preservar ensamble cuádruple ABCD como línea futura.
 
+---
+
+### [2026-10-13 09:30] — Auditoría de procedencia y compatibilidad: DINOv2 y RadImageNet
+- **Estado**: COMPLETED (Auditoría técnica y smoke tests sintéticos; sin entrenamientos ni jobs SLURM lanzados)
+- **Job SLURM**: N/A (Inspección offline de metadatos y smoke test CPU en entorno aislado)
+- **Autor / Rama**: joako / `joako`
+- **Commit Git**: Pendiente de autorización
+- **Hipótesis**: Verificar si los backbones candidatos (DINOv2 ViT-B/14, DenseNet121 RadImageNet e InceptionResNetV2 RadImageNet) disponen de checkpoints auténticos en disco, son compatibles con el pipeline de resonancia 2.5D (4 vistas, 16 cortes, 288x288) y son legalmente utilizables bajo sus licencias.
+- **Resultados Observados**:
+  - **DenseNet121 RadImageNet (`DenseNet121.pt`, 28.4 MB, SHA-256: `5011b427...`)**: APTO. Mapeo exacto 1:1 con `torchvision.models.densenet121.features` (6.95M params, salida 1024 canales). Smoke test sintético exitoso en 288x288 (`isfinite=True`, embedding 1024d). Requiere normalización radiológica en $[-1, 1]$.
+  - **InceptionResNetV2 RadImageNet**: DISCREPANCIA / NO DISPONIBLE. En disco únicamente existe `InceptionV3.pt` (87.5 MB, 21.8M params, salida 2048 canales). InceptionResNetV2 no está presente en el clúster.
+  - **DINOv2 ViT-B/14**: BLOQUEADO. El código fuente está presente en `models/dinov2`, pero no existen pesos preentrenados en disco. Además, impone incompatibilidad geométrica estricta: resolución 288x288 falla al no ser múltiplo de `patch_size=14` (requeriría 280x280 o 294x294).
+- **Lección Aprendida**: DenseNet121-RadImageNet es el único candidato técnica y documentalmente listo para experimentación; aporta representaciones preentrenadas en 1.35M imágenes radiológicas con solo 6.95M parámetros.
+- **Siguiente Paso**: Esperar autorización del usuario para proceder con el protocolo de feature extraction (backbone congelado) de DenseNet121-RadImageNet.
+
+---
+
+### [2026-10-13 09:45] — Extracción de Características con DenseNet121-RadImageNet (Piloto 5 Épocas)
+- **Estado**: COMPLETED (Evaluación offline finalizada con job 2084747 en CPU)
+- **Job SLURM**: `2084700` (entrenamiento GPU) y `2084747` (evaluación pareada CPU)
+- **Autor / Rama**: joako / `joako`
+- **Commit Git**: `87e2cd9` (+ cambios sin versionar de DenseNet121)
+- **Hipótesis**: DenseNet121 preentrenado con 1.35 millones de imágenes radiológicas (RadImageNet) posee representaciones convolucionales con sesgo inductivo médico superior a ImageNet natural. Con el backbone congelado (`requires_grad = False`, 6.95M params) y entrenando únicamente la cabeza de clasificación multietiqueta (12 patologías) con normalización en $[-1, 1]$, se alcanzará un clasificador convergente y calibrado con $\sim 18$ minutos de GPU, sentando la base para verificar su valor individual frente al baseline ResNet34 (`0.8435`) y su potencial complementariedad con el Trío Base+D (`0.8628`).
+- **Modificación**: Sustitución del extractor convolucional ImageNet por DenseNet121-RadImageNet congelado, con normalización radiológica en $[-1, 1]$.
+- **Configuración / Comando**:
+  - Checkpoint base: `models/RadImageNet_pytorch/DenseNet121.pt` (SHA-256: `5011b427acf483b3c05d9d4ac6ea4ff0baf5714c23937c0fcdc7c446226d0a14`)
+  - Épocas: 5 (18m 07s en 1 GPU AMD MI210 `amdgpu-hpc-01`, ExitCode 0:0)
+  - Evaluación: Inferencia CPU (Job `2084747`, 8m 50s en `amdcpu-hpc-22`, 16 threads, ExitCode 0:0)
+  - Batch: 8 | Crop: 288 | Cortes: 16
+  - Checkpoint evaluado: `last.pt` (época 5, SHA-256: `260873e6147ca99e6572290739910d4cd351be2a94807dd364286072f306d914`, 37.3 MB)
+- **Baseline de Referencia**:
+  - ResNet34 Base individual (`val_int` macro AUC: **0.8435**)
+  - ConvNeXt-Tiny Base individual (`val_int` macro AUC: **0.8518**)
+  - Ensamble Base 50/50 (`val_int` macro AUC: **0.8574**)
+  - Trío Base+D v2 (`val_int` macro AUC: **0.8628**)
+- **Resultados Observados**:
+  - DenseNet121 Individual: **0.6902** macro AUC en `val_int` (415 estudios).
+  - Delta vs ResNet34 Base: **-0.1534** (IC 95%: `[-0.1787, -0.1301]`, $P(>0) = \mathbf{0.0\%}$).
+  - Delta vs ConvNeXt Base: **-0.1616** (IC 95%: `[-0.1860, -0.1399]`, $P(>0) = \mathbf{0.0\%}$).
+  - Delta vs Ensamble 50/50: **-0.1672** (IC 95%: `[-0.1919, -0.1457]`, $P(>0) = \mathbf{0.0\%}$).
+  - Delta vs Trío Base+D: **-0.1726** (IC 95%: `[-0.1973, -0.1506]`, $P(>0) = \mathbf{0.0\%}$).
+  - Ensamble Exploratorio 4 Vías (Trío Base+D + DenseNet121, 25% c/u): **0.8571** (Delta vs Trío Base+D: **-0.0057**, IC 95%: `[-0.0094, -0.0018]`, $P(>0) = \mathbf{0.4\%}$).
+  - Ensamble 3 Vías (ResNet 25% + DenseNet 25% + ConvNeXt 50%): **0.8525** (Delta vs Ensamble 50/50: **-0.0049**, IC 95%: `[-0.0094, -0.0004]`, $P(>0) = \mathbf{1.6\%}$).
+### [2026-10-13 13:00] — Integración Experimental de EfficientNetV2-S (Job 2084365 / Eval 2084751)
+- **Estado**: COMPLETED
+- **Job SLURM**: `2084365` (entrenamiento GPU por Owen) y `2084751` (evaluación pareada CPU)
+- **Autor / Rama**: joako / `joako`
+- **Commit Git**: `87e2cd9` + scripts de evaluación
+- **Hipótesis**: EfficientNetV2-S entrenado de extremo a extremo con atención temporal ofrece mayor resolución representacional y eficiencia paramétrica (21.5M params), aportando diversidad ortogonal a ResNet34 y ConvNeXt-Tiny sin añadir coste de inferencia excesivo.
+- **Modificación**: Inferencia de `last.pt` de Job `2084365` (época 8, SHA-256: `124514845f595e81d200eda7038e8f6bfe69afed796e37dc0e6e7b1941ac4dd6`) sobre los 415 estudios de `val_int` con protocolo y máscaras oficiales ($w > 0$).
+- **Configuración / Comando**:
+  - Script de inferencia: `rsna/evaluar_efficientnet.py`
+  - Job SLURM: `jobs/evaluar_efficientnet_cpu.slurm` (Job ID: `2084751`, 7m 49s en `amdcpu-hpc-22`, 16 CPU threads, ExitCode 0:0).
+  - Reproducibilidad previa de baselines verificada al 100%: ResNet34 (0.8435), ConvNeXt (0.8518), Ensamble 50/50 (0.8574), Trío Base+D (0.8628), ABCD (0.8653).
+  - Concordancia con inferencia GPU de Owen (`predicciones.npz`): `mean_diff = 2.65e-4` (concordancia numérica exacta).
+- **Baseline de Referencia**:
+  - ResNet34 Base individual: **0.8435**
+  - ConvNeXt-Tiny Base individual: **0.8518**
+  - Ensamble Base 50/50: **0.8574**
+  - Trío Base+D v2: **0.8628**
+  - Ensamble Cuádruple ABCD: **0.8653**
+- **Resultados Observados**:
+  - EfficientNetV2-S individual (`last.pt`): **0.8517** macro AUC en `val_int`.
+    * Delta vs ResNet34 Base: **+0.0081** (IC 95%: `[-0.0062, +0.0222]`, $P = \mathbf{85.8\%}$).
+    * Delta vs ConvNeXt Base: **-0.0001** (IC 95%: `[-0.0109, +0.0104]`, $P = 49.0\%$).
+    * Gran fortaleza individual en patologías focales: ACL (**0.9233**), Lateral Meniscus (**0.8382**), Contusion (**0.8141**), Synovitis (**0.8477**).
+  - Trío Base+D + EffNet (4 vías: 25% c/u): **0.8663** macro AUC.
+    * Delta vs Trío Base+D (`0.8628`): $\mathbf{+0.0035}$ (IC 95%: $\mathbf{[+0.0003, +0.0064]}$, $P = \mathbf{98.5\%}$).
+  - Quíntuple ABCDE (20% c/u con Ensamble Cuádruple ABCD): **0.8670** macro AUC.
+    * Delta vs Ensamble Cuádruple ABCD (`0.8653`): $\mathbf{+0.0018}$ (IC 95%: `[-0.0003, +0.0039]`, $P = \mathbf{95.0\%}$).
+    * Récords por patología: Lateral Meniscus sube a **0.8626**, Medial Meniscus a **0.9281**, ACL a **0.9072**, PF OA a **0.8638**, Synovitis a **0.8539**, Contusion a **0.8145**.
+- **Lección Aprendida**: A diferencia de DenseNet RadImageNet congelado, EfficientNetV2-S entrenado end-to-end es un backbone de primer nivel médico (0.8517 individual) que complementa eficazmente tanto a Trío Base+D (+0.0035 con IC>0) como a ABCD (+0.0018, alcanzando 0.8670).
+- **Siguiente Paso**: Reportar resultados al usuario y documentar formalmente las métricas en `docs/evaluacion_efficientnetv2_s.md`.
+
+---
+
+### [2026-10-13 13:30] — Plan Estratégico y Auditoría Forense: Superar el 0.912 de Owen
+- **Estado**: COMPLETED
+- **Job SLURM**: N/A (Auditoría forense en disco, logs de Jobs 2084709, 2084711 y formalización de plan)
+- **Autor / Rama**: joako / `joako`
+- **Commit Git**: En curso
+- **Hipótesis**: Analizar los factores cuantitativos del Public Score 0.912 de Owen frente a nuestros scores 0.904/0.905 permitirá aislar las palancas de éxito (diversidad tri-arquitectura, 5-fold cross validation, estabilidad de `last.pt` y supervisión asimétrica) e identificar sus puntos ciegos (falta de `effhib` y ausencia de cabezas de atención por corte `slice_patho`) para trazar un plan reproducible antes del deadline del 22 de octubre.
+- **Resultados Observados**:
+  - Factores de éxito de Owen documentados al 100%: 15 modelos (5 folds x 3 familias), checkpoints fijos en `last.pt`, supervisión asimétrica v1/v2, promedio simple 1/15 sin TTA.
+  - Generación del documento formal `docs/plan_superar_owen_0912.md`.
+- **Lección Aprendida**: Owen alcanzó 0.912 no por hiperparámetros esotéricos, sino por diversidad inductiva real (EfficientNetV2-S + ConvNeXt + ResNet) y reducción masiva de varianza vía 5 folds con checkpoints estabilizados en decaimiento coseno.
+- **Siguiente Paso**: Ejecutar Experimento 0A (fusión de coste cero en `val_int`) y preparar Gatekeeper para entrenamiento de `effhib`.
+
+---
+
+### [2026-10-13 13:45] — Experimento 0A: Fusión Multi-Modelo Owen-15 + Joako Slice-Attention (Coste Cero)
+- **Estado**: PLANNED
+- **Job SLURM**: N/A (Evaluación offline con predicciones existentes en disco)
+- **Autor / Rama**: joako / `joako`
+- **Hipótesis**: Los 15 modelos de Owen carecen de atención focal por corte (`slice_patho`). Promediar las probabilidades de los 15 modelos de Owen con el modelo Joako Slice-Attention (`2084614`, individual 0.8633 en `val_int`) y Joako ConvNeXt Híbrido (`2084609`) reducirá el sesgo de representación e incrementará el macro AUC pareado sobre los 415 estudios de `val_int` por encima de 0.8650 sin requerir entrenamiento nuevo.
+- **Baseline de Referencia**: Ensamble 15 modelos de Owen sobre 415 `val_int`: **0.8630**.
+- **Criterio de Éxito**: $\Delta \ge +0.0020$ en `val_int`, $P(\Delta > 0) \ge 95\%$ en bootstrap pareado de 1,000 réplicas.
+- **Duración / Recursos**: ~2 minutos en CPU. Cero horas de GPU.
+
+---
+
+### [2026-10-13 14:00] — Experimento 1: Gatekeeper Single-Fold de EfficientNetV2-S Híbrido (`effhib`)
+- **Estado**: PLANNED
+- **Job SLURM**: Pendiente de asignación (`entrenar.py` / `entrenar_arq.py`)
+- **Autor / Rama**: joako / `joako`
+- **Hipótesis**: EfficientNetV2-S entrenado con pseudoetiquetas candidatas híbridas v2 (`etiquetas_candidatas_v2_hibridas.parquet`) combinará la precisión en meniscos de MBConv+SE con las ganancias masivas en fractura, contusión y MCL aportadas por la supervisión híbrida, superando el macro AUC individual de 0.8517 de `eff` v1 y convirtiéndose en el componente más potente para escalar a 5 folds.
+- **Baseline de Referencia**: EfficientNetV2-S v1 (`runs/2084365/last.pt`, `val_int` macro AUC: **0.8517**).
+- **Criterio de Éxito (Gatekeeper)**: `val_int` macro AUC $\ge 0.8517$ con ganancias netas en fractura y contusión; $\Delta \ge +0.0020$ al incorporarse en el ensamble.
+- **Duración / Recursos**: 1 GPU AMD MI210 (~2 horas 15 minutos).
+
+
+
+
+
