@@ -45,7 +45,8 @@ export MLFLOW_DISABLE_AGENT_HINT=1
 # Pesos preentrenados de torchvision según la red pedida (resnet34 por defecto).
 BACKBONE=resnet34
 for ((i = 1; i <= $#; i++)); do [[ "${!i}" == "--backbone" ]] && { j=$((i + 1)); BACKBONE="${!j}"; }; done
-WEIGHTS=$(ls "$PROJ"/modelos/torch/"${BACKBONE}"-*.pth 2>/dev/null | head -n 1 || true)
+# Otros pesos de partida (p. ej. los de preentrenar_moco.py): sbatch --export=ALL,KNEE_WEIGHTS=RUTA
+WEIGHTS="${KNEE_WEIGHTS:-$(ls "$PROJ"/modelos/torch/"${BACKBONE}"-*.pth 2>/dev/null | head -n 1 || true)}"
 echo "red=$BACKBONE pesos=${WEIGHTS:-ninguno}"
 
 # --- Trabajo -----------------------------------------------------------------
