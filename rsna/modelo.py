@@ -33,11 +33,16 @@ def make_encoder(name: str, weights_path: str | None) -> tuple[nn.Module, int]:
 
 class KneeNet(nn.Module):
     def __init__(self, backbone: str = "resnet34", weights_path: str | None = None,
-                 n_slots: int = 4, n_out: int = len(LABELS), dropout: float = 0.3, per_label: bool = False):
+                 n_slots: int = 4, n_out: int = len(LABELS), dropout: float = 0.3, per_label: bool = False,
+                 context: bool = False, pool: str = "media"):
         super().__init__()
-        self.backbone, self.per_label = backbone, per_label
+        self.backbone, self.per_label, self.context, self.pool = backbone, per_label, context, pool
         self.encoder, feat = make_encoder(backbone, weights_path)
         self.slot_emb = nn.Parameter(torch.zeros(n_slots, feat))
+        if context:   # posición del corte dentro de la serie y una red recurrente que comunica los cortes entre sí
+            self.slice_emb = nn.Parameter(torch.zeros(1, feat, 32))
+            self.rnn = nn.GRU(feat, feat // 2, num_layers=1, batch_first=True, bidirectional=True)
+            self.rnn_norm = nn.LayerNorm(feat)
         self.attn = nn.Sequential(nn.Linear(feat, 128), nn.Tanh(), nn.Linear(128, n_out if per_label else 1))
         self.head = nn.Sequential(nn.Dropout(dropout), nn.Linear(feat * n_slots, 512), nn.GELU(),
                                   nn.Dropout(dropout), nn.Linear(512, n_out))
@@ -46,7 +51,13 @@ class KneeNet(nn.Module):
         """x: (B, S, T, 3, H, W) normalizado; present: (B, S) con 1 si la ranura tiene serie."""
         b, s, t = x.shape[:3]
         f = self.encoder(x.flatten(0, 2).contiguous(memory_format=torch.channels_last))
-        f = f.mean(dim=(2, 3)).float().view(b, s, t, -1) + self.slot_emb[None, :, None, :]
+        f = f.mean(dim=(2, 3)) if self.pool == "media" else 0.5 * (f.mean(dim=(2, 3)) + f.amax(dim=(2, 3)))
+        f = f.float().view(b, s, t, -1) + self.slot_emb[None, :, None, :]
+        if self.context:
+            with torch.autocast(device_type=x.device.type, enabled=False):
+                pos = F.interpolate(self.slice_emb, size=t, mode="linear", align_corners=False)     # (1, F, T)
+                f = f + pos.transpose(1, 2)[:, None]
+                f = self.rnn_norm(f + self.rnn(f.flatten(0, 1))[0].view(b, s, t, -1))
         a = self.attn(f).softmax(dim=2)
         if not self.per_label:
             z = (a * f).sum(dim=2) * present[..., None].to(f.dtype)
