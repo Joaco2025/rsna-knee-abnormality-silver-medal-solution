@@ -1,0 +1,557 @@
+[
+ {
+  "nombre": "envio-owen-v3-cv15",
+  "metricas": {
+   "kaggle_publica": 0.912,
+   "auc_fuera_de_muestra": 0.8726,
+   "auc_oficial_promedio_particiones": 0.8928
+  },
+  "params": {
+   "miembros": "ResNet-34 x5 (v1) + EfficientNetV2-S x5 (v1) + ConvNeXt-Tiny x5 (tabla híbrida), última época",
+   "promedio": "media simple",
+   "modelos": 15,
+   "paquete": "envios/v3_cv15_r34_eff_cnxhib_paquete.zip",
+   "evaluacion": "runs/2084709",
+   "ensayo_inferencia": "runs/2084712"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "envio",
+   "kaggle.enviado": "si",
+   "kaggle.puntuacion_publica": "0.912",
+   "kaggle.fecha": "2026-10-13",
+   "kaggle.notebook": "v3_cv15_r34_eff_cnxhib - Version 2"
+  }
+ },
+ {
+  "nombre": "envio-joako-cuadruple-abcd",
+  "metricas": {
+   "kaggle_publica": 0.905
+  },
+  "params": {
+   "miembros": "cuádruple A+B+C+D de Joako (code_joako/envios_joako/candidato_cuadruple_abcd)",
+   "modelos": 4
+  },
+  "tags": {
+   "autor": "jcastro",
+   "tipo": "envio",
+   "kaggle.enviado": "si",
+   "kaggle.puntuacion_publica": "0.905",
+   "kaggle.fecha": "2026-10-13",
+   "kaggle.notebook": "notebook8425e5d90f - cuadruple_abcd_corregido"
+  }
+ },
+ {
+  "nombre": "envio-joako-trio-base-d",
+  "metricas": {
+   "kaggle_publica": 0.904,
+   "auc_interna": 0.8628
+  },
+  "params": {
+   "miembros": "ResNet-34 (25 %) + ResNet-34-D con atención por hallazgo, job 2084614 (25 %) + ConvNeXt-Tiny (50 %)",
+   "modelos": 3
+  },
+  "tags": {
+   "autor": "jcastro",
+   "tipo": "envio",
+   "kaggle.enviado": "si",
+   "kaggle.puntuacion_publica": "0.904",
+   "kaggle.fecha": "2026-10-13",
+   "kaggle.notebook": "RSNA Joako | Trio Base+D v2"
+  }
+ },
+ {
+  "nombre": "job-2084585",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084586",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084626",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084584",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084365",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084051",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084052",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084350",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084351",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084050",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084671",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288-hibrida",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084673",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288-hibrida",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084676",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288-hibrida",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084684",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288-hibrida",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084633",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288-hibrida",
+   "kaggle.en_envios": "envio-owen-v3-cv15"
+  }
+ },
+ {
+  "nombre": "job-2084588",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084593",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084608",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084619",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084587",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084674",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084683",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084689",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084694",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084634",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084650",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-fuerte",
+   "resultado": "sin mejora (0.8427 frente a 0.8413)"
+  }
+ },
+ {
+  "nombre": "job-2084652",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-fuerte",
+   "resultado": "sin mejora (0.8427 frente a 0.8413)"
+  }
+ },
+ {
+  "nombre": "job-2084653",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-fuerte",
+   "resultado": "sin mejora (0.8427 frente a 0.8413)"
+  }
+ },
+ {
+  "nombre": "job-2084657",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-fuerte",
+   "resultado": "sin mejora (0.8427 frente a 0.8413)"
+  }
+ },
+ {
+  "nombre": "job-2084625",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-fuerte",
+   "resultado": "sin mejora (0.8427 frente a 0.8413)"
+  }
+ },
+ {
+  "nombre": "job-2084654",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-mezcla",
+   "resultado": "peor (0.8381)"
+  }
+ },
+ {
+  "nombre": "job-2084658",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-mezcla",
+   "resultado": "peor (0.8381)"
+  }
+ },
+ {
+  "nombre": "job-2084659",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-mezcla",
+   "resultado": "peor (0.8381)"
+  }
+ },
+ {
+  "nombre": "job-2084666",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-mezcla",
+   "resultado": "peor (0.8381)"
+  }
+ },
+ {
+  "nombre": "job-2084628",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-mezcla",
+   "resultado": "peor (0.8381)"
+  }
+ },
+ {
+  "nombre": "job-2084664",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-consistencia",
+   "resultado": "sin mejora (0.8424)"
+  }
+ },
+ {
+  "nombre": "job-2084665",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-consistencia",
+   "resultado": "sin mejora (0.8424)"
+  }
+ },
+ {
+  "nombre": "job-2084667",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-consistencia",
+   "resultado": "sin mejora (0.8424)"
+  }
+ },
+ {
+  "nombre": "job-2084672",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-consistencia",
+   "resultado": "sin mejora (0.8424)"
+  }
+ },
+ {
+  "nombre": "job-2084629",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-aug-consistencia",
+   "resultado": "sin mejora (0.8424)"
+  }
+ },
+ {
+  "nombre": "job-2084726",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-moco-hibrida",
+   "resultado": "+0.002 a +0.003 frente a partir de ImageNet"
+  }
+ },
+ {
+  "nombre": "job-2084728",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-moco-hibrida",
+   "resultado": "+0.002 a +0.003 frente a partir de ImageNet"
+  }
+ },
+ {
+  "nombre": "job-2084742",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-moco-hibrida",
+   "resultado": "+0.002 a +0.003 frente a partir de ImageNet"
+  }
+ },
+ {
+  "nombre": "job-2084743",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-moco-hibrida",
+   "resultado": "+0.002 a +0.003 frente a partir de ImageNet"
+  }
+ },
+ {
+  "nombre": "job-2084713",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-moco-hibrida",
+   "resultado": "+0.002 a +0.003 frente a partir de ImageNet"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-effv2s-288",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8592,
+   "auc_oficial_promedio_particiones": 0.8858
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-effv2s-288"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-cnx-288",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8542,
+   "auc_oficial_promedio_particiones": 0.8808
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-cnx-288"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-r34-288-hibrida",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8464,
+   "auc_oficial_promedio_particiones": 0.8661
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-r34-288-hibrida"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-cnx-288-hibrida",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.861,
+   "auc_oficial_promedio_particiones": 0.8871
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-cnx-288-hibrida"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-effv2s-288-hibrida",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8644,
+   "auc_oficial_promedio_particiones": 0.8928
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-effv2s-288-hibrida"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-r34-moco-hibrida",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8495,
+   "auc_oficial_promedio_particiones": 0.8681
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-r34-moco-hibrida"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-r34-aug-fuerte",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8427,
+   "auc_oficial_promedio_particiones": 0.8651
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-r34-aug-fuerte"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-r34-aug-mezcla",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8381,
+   "auc_oficial_promedio_particiones": 0.8515
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-r34-aug-mezcla"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-r34-aug-consistencia",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8424,
+   "auc_oficial_promedio_particiones": 0.8671
+  },
+  "params": {
+   "referencia": "etiquetas_v1",
+   "evaluacion": "runs/2084708, runs/2084786"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-r34-aug-consistencia"
+  }
+ }
+]
