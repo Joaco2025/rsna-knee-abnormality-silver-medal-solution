@@ -45,7 +45,7 @@ def main():
     y_off = t_int = w_int = None
     for path in args.checkpoints:
         state = torch.load(path, map_location="cpu")
-        model = KneeNet(state["backbone"], None)
+        model = KneeNet(state["backbone"], None, n_slots=state.get("n_slots", 4), per_label=state.get("per_label", False))
         model.load_state_dict(state["model"])
         model = model.to(device).to(memory_format=torch.channels_last)
 

@@ -97,6 +97,8 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="estudios de entrenamiento, para pruebas")
     ap.add_argument("--no-amp", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--atencion", default="comun", choices=["comun", "hallazgo"],
+                    help="hallazgo: cada hallazgo tiene su propia atención sobre los cortes")
     ap.add_argument("--aug", default="suave", choices=["suave", "fuerte"],
                     help="fuerte añade giro, escala, desplazamiento, gamma, ruido y borrado por serie")
     ap.add_argument("--quitar-serie", type=float, default=0.0, help="probabilidad de apagar una serie al azar de cada estudio")
@@ -128,7 +130,7 @@ def main():
     n_slots = int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[0])   # series por estudio
     print(f"entrenamiento={len(train)} validación interna={len(val_int)} validación oficial={len(official)} "
           f"partición={args.fold}/{args.folds} aug={args.aug} quitar_serie={args.quitar_serie} mixup={args.mixup} "
-          f"consistencia={args.consistencia} series={n_slots} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
 
     def loader(tab, train_mode):
         return DataLoader(Studies(tab, args.data, args.crop, train_mode), batch_size=args.batch, shuffle=train_mode,
@@ -136,7 +138,7 @@ def main():
                           persistent_workers=args.workers > 0)
 
     dl_train, dl_int, dl_off = loader(train, True), loader(val_int, False), loader(official, False)
-    model = KneeNet(args.backbone, args.weights or None, n_slots=n_slots).to(device).to(memory_format=torch.channels_last)
+    model = KneeNet(args.backbone, args.weights or None, n_slots=n_slots, per_label=args.atencion == "hallazgo").to(device).to(memory_format=torch.channels_last)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
     steps = args.epochs * len(dl_train) // args.acumular
     warm = max(1, len(dl_train) // 2 // args.acumular)
@@ -230,7 +232,7 @@ def main():
             except Exception as exc:
                 print(f"MLflow: {type(exc).__name__}: {exc}", flush=True)
 
-        state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots,
+        state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots, "per_label": args.atencion == "hallazgo",
                  "size": int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[-1]),
                  "epoch": epoch, "auc_interna": auc_int, "auc_oficial": auc_off, "labels": LABELS}
         torch.save(state, args.out / "last.pt")

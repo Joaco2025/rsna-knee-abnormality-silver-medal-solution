@@ -33,12 +33,12 @@ def make_encoder(name: str, weights_path: str | None) -> tuple[nn.Module, int]:
 
 class KneeNet(nn.Module):
     def __init__(self, backbone: str = "resnet34", weights_path: str | None = None,
-                 n_slots: int = 4, n_out: int = len(LABELS), dropout: float = 0.3):
+                 n_slots: int = 4, n_out: int = len(LABELS), dropout: float = 0.3, per_label: bool = False):
         super().__init__()
-        self.backbone = backbone
+        self.backbone, self.per_label = backbone, per_label
         self.encoder, feat = make_encoder(backbone, weights_path)
         self.slot_emb = nn.Parameter(torch.zeros(n_slots, feat))
-        self.attn = nn.Sequential(nn.Linear(feat, 128), nn.Tanh(), nn.Linear(128, 1))
+        self.attn = nn.Sequential(nn.Linear(feat, 128), nn.Tanh(), nn.Linear(128, n_out if per_label else 1))
         self.head = nn.Sequential(nn.Dropout(dropout), nn.Linear(feat * n_slots, 512), nn.GELU(),
                                   nn.Dropout(dropout), nn.Linear(512, n_out))
 
@@ -48,8 +48,13 @@ class KneeNet(nn.Module):
         f = self.encoder(x.flatten(0, 2).contiguous(memory_format=torch.channels_last))
         f = f.mean(dim=(2, 3)).float().view(b, s, t, -1) + self.slot_emb[None, :, None, :]
         a = self.attn(f).softmax(dim=2)
-        z = (a * f).sum(dim=2) * present[..., None].to(f.dtype)
-        return self.head(z.flatten(1))
+        if not self.per_label:
+            z = (a * f).sum(dim=2) * present[..., None].to(f.dtype)
+            return self.head(z.flatten(1))
+        # Atención propia de cada hallazgo (idea de Joako): cada uno elige sus cortes; la cabeza se comparte.
+        z = torch.einsum("bstj,bstf->bjsf", a, f) * present[:, None, :, None].to(f.dtype)    # (B, J, S, F)
+        h = self.head[:-1](z.flatten(2))                                                     # (B, J, 512)
+        return (h * self.head[-1].weight[None]).sum(-1) + self.head[-1].bias
 
 
 def augment(x: torch.Tensor) -> torch.Tensor:
