@@ -17,7 +17,7 @@ set -euo pipefail
 [[ $# -ge 1 ]] || { echo "indica al menos un grupo nombre=JOB,JOB,..." >&2; exit 1; }
 
 PROJ=/lustre/proyectos/p082
-LABELS=$(ls -t "$PROJ"/preproc/etiquetas_v1_*.parquet | head -n 1)
+LABELS="${KNEE_LABELS:-$(ls -t "$PROJ"/preproc/etiquetas_v1_*.parquet | head -n 1)}"   # contra qué objetivos se mide
 OUT="$PROJ/runs/${SLURM_JOB_ID:?}"
 mkdir -p "$OUT"
 cd "$PROJ/code"

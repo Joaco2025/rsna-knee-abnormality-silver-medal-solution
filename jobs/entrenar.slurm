@@ -24,7 +24,7 @@ set -euo pipefail
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
 DATA="${KNEE_PREPROC:-$PROJ/preproc/v1_train}"                          # otra versión: sbatch --export=ALL,KNEE_PREPROC=RUTA
-LABELS=$(ls -t "$PROJ"/preproc/etiquetas_v1_*.parquet | head -n 1)     # la tabla de objetivos más reciente
+LABELS="${KNEE_LABELS:-$(ls -t "$PROJ"/preproc/etiquetas_v1_*.parquet | head -n 1)}"   # la más reciente, u otra con --export=ALL,KNEE_LABELS=RUTA
 OUT="$PROJ/runs/${SLURM_JOB_ID:?}"                                     # directorio nuevo por job
 mkdir -p "$OUT" "$PROJ/mlflow/artifacts" "$PROJ/cache/miopen"
 cd "$PROJ/code"
