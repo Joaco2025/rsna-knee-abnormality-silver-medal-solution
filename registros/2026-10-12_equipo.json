@@ -1,0 +1,323 @@
+[
+ {
+  "nombre": "job-2084568",
+  "historial": "/lustre/proyectos/p082/runs_cons/runs/2084568",
+  "params": {
+   "backbone": "resnet34",
+   "job": "2084568",
+   "folds": 10,
+   "fold": 0,
+   "epochs": 8,
+   "slices": 16,
+   "crop": 288,
+   "batch": 8,
+   "labels": "/lustre/proyectos/p082/runs_cons/datos/etiquetas_candidatas_v2_hibridas.parquet",
+   "out": "/lustre/proyectos/p082/runs_cons/runs/2084568"
+  },
+  "tags": {
+   "autor": "gcons",
+   "grupo": "r34-etiquetas-hibridas",
+   "etiquetas": "híbridas v2 (Qwen + etiquetas públicas de Steven Lee Hans)",
+   "nota": "auc_interna medida contra la tabla híbrida: no es comparable con las corridas entrenadas con etiquetas_v1"
+  }
+ },
+ {
+  "nombre": "job-2084557",
+  "historial": "/lustre/proyectos/p082/runs_joako/cornofs_5view/brazoA_4v_seed0",
+  "params": {
+   "backbone": "resnet34",
+   "job": "2084557",
+   "folds": 10,
+   "fold": 0,
+   "epochs": 8,
+   "slices": 16,
+   "crop": 288,
+   "batch": 8,
+   "seed": 0,
+   "slots": 4,
+   "out": "/lustre/proyectos/p082/runs_joako/cornofs_5view/brazoA_4v_seed0"
+  },
+  "tags": {
+   "autor": "jcastro",
+   "grupo": "vistas-4-vs-5",
+   "resultado": "quinta vista (coronal sin supresión grasa): +0.002 no significativo, descartada"
+  }
+ },
+ {
+  "nombre": "job-2084558",
+  "historial": "/lustre/proyectos/p082/runs_joako/cornofs_5view/brazoB_5v_seed0",
+  "params": {
+   "backbone": "resnet34",
+   "job": "2084558",
+   "folds": 10,
+   "fold": 0,
+   "epochs": 8,
+   "slices": 16,
+   "crop": 288,
+   "batch": 8,
+   "seed": 0,
+   "slots": 5,
+   "out": "/lustre/proyectos/p082/runs_joako/cornofs_5view/brazoB_5v_seed0"
+  },
+  "tags": {
+   "autor": "jcastro",
+   "grupo": "vistas-4-vs-5",
+   "resultado": "quinta vista (coronal sin supresión grasa): +0.002 no significativo, descartada"
+  }
+ },
+ {
+  "nombre": "envio-joako-v1-r34+cnx",
+  "metricas": {
+   "kaggle_publica": 0.897,
+   "auc_interna": 0.8574,
+   "auc_oficial": 0.8793
+  },
+  "params": {
+   "miembros": "job-2080214 ep7 + job-2080215 ep5",
+   "promedio": "media simple",
+   "modelos": 2
+  },
+  "tags": {
+   "autor": "jcastro",
+   "tipo": "envio",
+   "kaggle.enviado": "si",
+   "kaggle.puntuacion_publica": "0.897",
+   "kaggle.fecha": "2026-10-12",
+   "kaggle.notebook": "RSNA Joako Ensemble v1 - ResNet34 + ConvNeXt-Tiny",
+   "kaggle.seleccionado_final": "si (al 2026-10-12)",
+   "evaluacion": "runs_joako/2081432 (415 estudios internos, 58 oficiales)"
+  },
+  "pesos": [
+   "/lustre/proyectos/p082/code_joako/envios_joako/v1_ensamble/pesos/resnet34_job2080214_ep7.pt",
+   "/lustre/proyectos/p082/code_joako/envios_joako/v1_ensamble/pesos/convnext_tiny_job2080215_ep5.pt"
+  ]
+ },
+ {
+  "nombre": "envio-cons-v3-trio",
+  "metricas": {
+   "kaggle_publica": 0.898
+  },
+  "params": {
+   "miembros": "job-2080214 ep7 + job-2084568 ep7 + job-2080215 ep5",
+   "promedio": "media simple",
+   "modelos": 3
+  },
+  "tags": {
+   "autor": "gcons",
+   "tipo": "envio",
+   "kaggle.enviado": "si",
+   "kaggle.puntuacion_publica": "0.898",
+   "kaggle.fecha": "2026-10-12",
+   "kaggle.notebook": "notebook66a91f2501 - cons_v3_submit",
+   "kaggle.seleccionado_final": "no (al 2026-10-12)",
+   "evaluacion": "runs_cons/runs/2084577"
+  },
+  "pesos": [
+   "/lustre/proyectos/p082/runs_cons/envio/paquete_ensamble/pesos/resnet34_anterior_ep7.pt",
+   "/lustre/proyectos/p082/runs_cons/envio/paquete_ensamble/pesos/resnet34_nuevo_ep7.pt",
+   "/lustre/proyectos/p082/runs_cons/envio/paquete_ensamble/pesos/convnext_tiny_ep5.pt"
+  ]
+ },
+ {
+  "nombre": "job-2080214",
+  "tags": {
+   "kaggle.en_envios": "envio-joako-v1-r34+cnx, envio-cons-v3-trio"
+  },
+  "cerrar": true
+ },
+ {
+  "nombre": "job-2080215",
+  "tags": {
+   "kaggle.en_envios": "envio-joako-v1-r34+cnx, envio-cons-v3-trio"
+  },
+  "cerrar": true
+ },
+ {
+  "nombre": "job-2084568",
+  "tags": {
+   "kaggle.en_envios": "envio-cons-v3-trio"
+  },
+  "cerrar": true
+ },
+ {
+  "nombre": "job-2080214",
+  "tags": {
+   "autor": "owen",
+   "grupo": "base-una-particion"
+  }
+ },
+ {
+  "nombre": "job-2080215",
+  "tags": {
+   "autor": "owen",
+   "grupo": "base-una-particion"
+  }
+ },
+ {
+  "nombre": "job-2084051",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288"
+  }
+ },
+ {
+  "nombre": "job-2084052",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288"
+  }
+ },
+ {
+  "nombre": "job-2084350",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288"
+  }
+ },
+ {
+  "nombre": "job-2084351",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288"
+  }
+ },
+ {
+  "nombre": "job-2084050",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-288"
+  }
+ },
+ {
+  "nombre": "job-2084405",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-352",
+   "resultado": "subir la resolución no mejora (0.8403 frente a 0.8413 fuera de muestra)"
+  }
+ },
+ {
+  "nombre": "job-2084541",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-352",
+   "resultado": "subir la resolución no mejora (0.8403 frente a 0.8413 fuera de muestra)"
+  }
+ },
+ {
+  "nombre": "job-2084554",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-352",
+   "resultado": "subir la resolución no mejora (0.8403 frente a 0.8413 fuera de muestra)"
+  }
+ },
+ {
+  "nombre": "job-2084559",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-352",
+   "resultado": "subir la resolución no mejora (0.8403 frente a 0.8413 fuera de muestra)"
+  }
+ },
+ {
+  "nombre": "job-2084364",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-352",
+   "resultado": "subir la resolución no mejora (0.8403 frente a 0.8413 fuera de muestra)"
+  }
+ },
+ {
+  "nombre": "job-2084323",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288"
+  }
+ },
+ {
+  "nombre": "job-2084324",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288"
+  }
+ },
+ {
+  "nombre": "job-2084546",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288"
+  }
+ },
+ {
+  "nombre": "job-2084547",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288"
+  }
+ },
+ {
+  "nombre": "job-2084322",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-cnx-288"
+  }
+ },
+ {
+  "nombre": "job-2084365",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-effv2s-288"
+  }
+ },
+ {
+  "nombre": "job-2079411",
+  "tags": {
+   "autor": "owen",
+   "descartada": "prueba de 1 época con 240 estudios"
+  },
+  "cerrar": true
+ },
+ {
+  "nombre": "job-2084361",
+  "tags": {
+   "autor": "owen",
+   "descartada": "sin memoria en GPU con lote 8; repetida como job-2084365 con lote 4"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-r34-288",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8413,
+   "auc_oficial_promedio_particiones": 0.86
+  },
+  "params": {
+   "miembros": "job-2084051, 2084052, 2084350, 2084351, 2084050",
+   "epoca": 8,
+   "evaluacion": "runs/2084583"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-r34-288"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-r34-352",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8403,
+   "auc_oficial_promedio_particiones": 0.8569
+  },
+  "params": {
+   "miembros": "job-2084405, 2084541, 2084554, 2084559, 2084364",
+   "epoca": 8,
+   "evaluacion": "runs/2084583"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-r34-352",
+   "resultado": "sin mejora frente a 288"
+  }
+ }
+]
