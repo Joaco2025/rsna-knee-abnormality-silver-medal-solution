@@ -17,25 +17,29 @@ Este repositorio documenta el trabajo colaborativo estructurado en dos fases:
   * **Entrenamiento de los modelos base individuales:**
     * **ResNet-34** (checkpoint época 7, `best_oficial.pt`), con el que se obtuvo la puntuación baseline de **0.875** en el leaderboard público de Kaggle.
     * **ConvNeXt-Tiny** (checkpoint época 5, `best_oficial.pt`).
-* **Integración, evaluación y despliegue del ensamble (Joako / FernyBoy):**
+* **Integración, evaluación y despliegue de ensambles (Joako / FernyBoy):**
   * Aislamiento determinista de infraestructura personal (rutas de salida en `runs_joako`, logs, canalizaciones SLURM, base de datos de MLflow aislada y caché de GPU).
   * Formulación de la hipótesis del ensamble multiarquitectura (combinación 50/50 de ResNet-34 y ConvNeXt-Tiny para integrar representaciones residuales clásicas y de kernel amplio).
   * **Diseño e implementación del evaluador comparativo pareado** (`rsna/evaluar_ensamble.py` y `jobs/evaluar_ensamble.slurm`), con métricas macro por split, desglose por patología, matrices de correlación y análisis de incertidumbre mediante remuestreo bootstrap (500 réplicas, IC 95%).
   * Verificación empírica local de la mejora del ensamble tanto en validación interna como en el conjunto oficial.
   * **Construcción y validación del paquete autónomo de inferencia offline** (`inferencia.ipynb`, dependencias DICOM offline, validaciones de integridad en `rsna/inferir.py` y smoke test).
-  * Generación del envío oficial a Kaggle logrando una puntuación de **0.897** (**+0.022** sobre el baseline).
+  * Generación del primer envío oficial a Kaggle logrando una puntuación de **0.897** (**+0.022** sobre el baseline).
+  * **Diseño e integración del ensamble Trío Base+D v2:** incorporación de atención multi-instancia por corte (*Slice Attention* / `KneeNetAtt`) combinada con ponderación asimétrica ($0.25 / 0.25 / 0.50$), alcanzando la puntuación verificada de **0.904** en el leaderboard público de Kaggle (**+0.029** sobre el baseline original). Ver documentación detallada en [`docs/trio_base_d.md`](docs/trio_base_d.md).
 
 ---
 
 ## 🏆 Resumen de Resultados
 
 ### 1. Puntuación Oficial en Kaggle (Test Oculto de la Competencia, ~1,300 estudios)
-La evaluación ciega oficial en la plataforma de Kaggle confirmó la generalización del ensamble:
+La evaluación ciega oficial en la plataforma de Kaggle confirmó la generalización de las soluciones:
 
 | Solución | Backbone / Composición | Kaggle Public Score (Macro AUC) | Delta vs Baseline |
 |---|---|:---:|:---:|
 | **Baseline (Owen)** | ResNet-34 (época 7) | 0.8750 | — |
-| **Ensamble (Joako)** | **ResNet-34 (50%) + ConvNeXt-Tiny (50%)** | **0.8970** | **+0.0220** |
+| **Ensamble Base (Joako)** | ResNet-34 (50%) + ConvNeXt-Tiny (50%) | 0.8970 | +0.0220 |
+| **Trío Base+D v2 (Joako)** | **ResNet-34 (25%) + ResNet-34-D Slice Att (25%) + ConvNeXt-Tiny (50%)** | **0.9040** | **+0.0290** (+0.0070 vs Ensamble) |
+
+> Para un análisis exhaustivo del Trío Base+D v2, gráficos, fundamentación médica y comparativa de alternativas, consulta el documento técnico [`docs/trio_base_d.md`](docs/trio_base_d.md).
 
 ---
 
@@ -78,32 +82,33 @@ Muestra cómo el ensamble combina la estabilidad de ResNet-34 en ligamentos con 
 ## 🧠 Arquitectura de Inferencia y Ensamble
 
 ```
-Estudio RM (Axial, Coronal, Sagital)
-                │
-                ├──────────────────────────────────────────────┐
-                ▼                                              ▼
-    ┌───────────────────────────┐                  ┌───────────────────────────┐
-    │  Backbone 1: ResNet-34    │                  │ Backbone 2: ConvNeXt-Tiny │
-    │  - 16 cortes seleccionados│                  │  - 16 cortes seleccionados│
-    │  - Crop central 288x288   │                  │  - Crop central 288x288   │
-    └─────────────┬─────────────┘                  └─────────────┬─────────────┘
-                  │ Probabilidades                               │ Probabilidades
-                  │ $P_{ResNet}$                                 │ $P_{ConvNeXt}$
-                  └──────────────────────┬───────────────────────┘
+                     Estudio RM (Axial, Coronal, Sagital)
+                                       │
+            ┌──────────────────────────┼──────────────────────────┐
+            ▼                          ▼                          ▼
+   ┌───────────────────┐      ┌───────────────────┐      ┌───────────────────┐
+   │    ResNet-34      │      │    ResNet-34-D    │      │   ConvNeXt-Tiny   │
+   │    Base (25%)     │      │  Slice Att (25%)  │      │    Base (50%)     │
+   │  Pooling Estándar │      │  Atención MIL 12p │      │ Kernel 7x7 Amplio │
+   └────────┬──────────┘      └────────┬──────────┘      └────────┬──────────┘
+            │ Probabilidad             │ Probabilidad             │ Probabilidad
+            │ $P_1$                    │ $P_2$                    │ $P_3$
+            └────────────────────┐     │     ┌────────────────────┘
+                                 ▼     ▼     ▼
+                     ┌───────────────────────────────────────┐
+                     │          Fusión Ponderada             │
+                     │  $P = 0.25 P_1 + 0.25 P_2 + 0.50 P_3$ │
+                     └───────────────────┬───────────────────┘
                                          ▼
-                            ┌─────────────────────────┐
-                            │ Promedio Simple (50/50) │
-                            │ $P = 0.5 P_1 + 0.5 P_2$ │
-                            └────────────┬────────────┘
-                                         ▼
-                            Predicciones Finales (12 AUC)
+                             Predicciones Finales (12 AUC)
 ```
 
-1. **Entrada Multi-Corte y Multi-Vista:** Para cada estudio se cargan 16 cortes distribuidos a lo largo del volumen en los tres planos anatómicos (axial, coronal, sagital) recortados al centro a $288 \times 288$.
-2. **Backbones Heterogéneos:**
-   * **ResNet-34:** Fuerte rendimiento y estabilidad en ligamentos (ACL: 0.9203).
-   * **ConvNeXt-Tiny:** Capacidad superior en fracturas (+0.0875) y colaterales (+0.0527).
-3. **Fusión No Paramétrica:** Promedio aritmético directo entre las salidas sigmoideas de ambos modelos, mitigando la varianza de predicción individual sin añadir hiperparámetros que arriesguen sobreajuste.
+1. **Entrada Multi-Corte y Multi-Vista:** Para cada estudio se cargan 16 cortes seleccionados a lo largo del volumen en los cuatro planos/secuencias anatómicas (`Sagittal FS`, `Sagittal no-FS`, `Coronal FS`, `Axial FS`) recortados al centro a $288 \times 288$.
+2. **Backbones Heterogéneos y Especialización:**
+   * **ResNet-34 Base:** Estabilidad residual clásica y alta sensibilidad en ligamentos (ACL: 0.9203).
+   * **ResNet-34-D (Slice Attention):** Atención multi-instancia (*MIL*) independiente para cada patología, seleccionando cortes con lesiones focales (Baker's: 0.9285, Contusion: 0.8060).
+   * **ConvNeXt-Tiny Base:** Gran capacidad representacional con kernels 7x7, destacando en fracturas (0.8426) y colaterales (0.8043).
+3. **Fusión Asimétrica Calibrada:** Ponderación $0.25 / 0.25 / 0.50$ que preserva el peso predominante de ConvNeXt en patologías óseas/ligamentosas mientras divide la familia ResNet para incorporar resolución focal sin distorsionar la calibración global.
 
 ---
 
@@ -171,6 +176,6 @@ python rsna/evaluar_ensamble.py \
 3. **Calibración Post-Hoc de Probabilidades:**
    * Evaluar empíricamente técnicas de calibración como Platt scaling o regresión isotónica por patología para determinar si mejoran la fiabilidad probabilística o si introducen distorsiones en el ordenamiento relativo.
 4. **Mecanismo de Atención entre Cortes (Slice Attention):**
-   * Incorporar atención secuencial o transformer ligero entre cortes para aprender a ponderar los cortes con lesiones focales en lugar de un promedio estático.
+   * *Validado e implementado:* La atención MIL por patología sobre cortes (`slice_patho`) demostró ser altamente efectiva en lesiones focales, impulsando el ensamble Trío Base+D v2 a **0.904** en Kaggle (ver [`docs/trio_base_d.md`](docs/trio_base_d.md)). Como extensión futura, se exploran arquitecturas volumétricas 3D directas e inflado temporal de kernels.
 5. **Diversidad Arquitectónica Adicional:**
    * Evaluar un backbone Transformer (e.g. Swin Transformer) para enriquecer el ensamble con un sesgo inductivo complementario a las CNNs.
