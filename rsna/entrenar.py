@@ -95,9 +95,12 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--mlflow", default="", help="URI de seguimiento de MLflow (p. ej. sqlite:////ruta/mlflow.db); vacío = no registrar")
     ap.add_argument("--mlflow-artifacts", default="", help="directorio de artefactos del experimento")
+    ap.add_argument("--folds", type=int, default=10, help="número de particiones de la validación interna")
+    ap.add_argument("--fold", type=int, default=0, help="partición que se aparta para validar")
     ap.add_argument("--run-name", default="")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
+    assert 0 <= args.fold < args.folds, "--fold debe estar entre 0 y --folds - 1"
     torch.manual_seed(args.seed); np.random.seed(args.seed)
     device = torch.device("cuda")
     amp = not args.no_amp
@@ -106,14 +109,14 @@ def main():
     table = table[[(args.data / f"{u}.npy").exists() for u in table.StudyInstanceUID]].reset_index(drop=True)
     official = table[table.oficial]
     rest = table[~table.oficial]
-    fold = rest.StudyInstanceUID.map(lambda u: int(hashlib.md5(u.encode()).hexdigest(), 16) % 10)
-    val_int, train = rest[fold == 0], rest[fold != 0]
+    fold = rest.StudyInstanceUID.map(lambda u: int(hashlib.md5(u.encode()).hexdigest(), 16) % args.folds)
+    val_int, train = rest[fold == args.fold], rest[fold != args.fold]
     has_target = train[[f"w_{c}" for c in LABELS]].sum(axis=1) > 0
     train = train[has_target]
     if args.limit:
         train = train.head(args.limit)
     print(f"entrenamiento={len(train)} validación interna={len(val_int)} validación oficial={len(official)} "
-          f"red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+          f"partición={args.fold}/{args.folds} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
 
     def loader(tab, train_mode):
         return DataLoader(Studies(tab, args.data, args.crop, train_mode), batch_size=args.batch, shuffle=train_mode,
@@ -153,6 +156,7 @@ def main():
             ml = None
 
     history, best = [], {"oficial": -1.0, "interna": -1.0}
+    preds_int, preds_off = [], []
     for epoch in range(1, args.epochs + 1):
         model.train()
         t0, seen, loss_sum = time.time(), 0, 0.0
@@ -180,6 +184,8 @@ def main():
         auc_int, per_int = macro_auc((t_int >= 0.5).astype(int), p_int, w_int)
         p_off, _, _, y_off = predict(model, dl_off, device, args.slices, amp)
         auc_off, per_off = macro_auc(y_off.astype(int), p_off)
+        preds_int.append(p_int)
+        preds_off.append(p_off)
         row = {"epoch": epoch, "loss": loss_sum / max(seen, 1), "auc_interna": auc_int, "auc_oficial": auc_off,
                "segundos_entrenamiento": round(train_s, 1), "estudios_por_s": round(seen / train_s, 2)}
         history.append(row)
@@ -204,6 +210,9 @@ def main():
                 if key == "interna":
                     best["por_hallazgo"] = {"oficial": per_off, "interna": per_int, "epoch": epoch}
         pd.DataFrame(history).to_csv(args.out / "historial.csv", index=False)
+        np.savez(args.out / "predicciones.npz", fold=args.fold, folds=args.folds,
+                 uid_interna=val_int.StudyInstanceUID.to_numpy(str), p_interna=np.stack(preds_int),
+                 uid_oficial=official.StudyInstanceUID.to_numpy(str), p_oficial=np.stack(preds_off))
 
     print(f"\n== mejor AUC interna {best['interna']:.4f}, mejor AUC oficial {best['oficial']:.4f}")
     sel = best.get("por_hallazgo")

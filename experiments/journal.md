@@ -397,25 +397,59 @@ Toda la implementación está en archivos nuevos (`rsna/modelo_att.py`, `entrena
 
 ---
 
-### [2026-10-13 13:45] — Experimento 0A: Fusión Multi-Modelo Owen-15 + Joako Slice-Attention (Coste Cero)
-- **Estado**: PLANNED
-- **Job SLURM**: N/A (Evaluación offline con predicciones existentes en disco)
+---
+
+### [2026-10-13 13:45] — Experimento 0A / 0B: Fusión Multi-Modelo Offline (0h GPU)
+- **Estado**: COMPLETED
+- **Job SLURM**: `2084773` (nodo `amdcpu-hpc-22`, 8 CPUs, 32 GB, 4m 42s, ExitCode `0:0`)
 - **Autor / Rama**: joako / `joako`
-- **Hipótesis**: Los 15 modelos de Owen carecen de atención focal por corte (`slice_patho`). Promediar las probabilidades de los 15 modelos de Owen con el modelo Joako Slice-Attention (`2084614`, individual 0.8633 en `val_int`) y Joako ConvNeXt Híbrido (`2084609`) reducirá el sesgo de representación e incrementará el macro AUC pareado sobre los 415 estudios de `val_int` por encima de 0.8650 sin requerir entrenamiento nuevo.
-- **Baseline de Referencia**: Ensamble 15 modelos de Owen sobre 415 `val_int`: **0.8630**.
-- **Criterio de Éxito**: $\Delta \ge +0.0020$ en `val_int`, $P(\Delta > 0) \ge 95\%$ en bootstrap pareado de 1,000 réplicas.
-- **Duración / Recursos**: ~2 minutos en CPU. Cero horas de GPU.
+- **Commit Git**: `4b0b2d4`
+- **Hipótesis**: 
+  1. En los 4,349 estudios OOF de Owen, una reponderación en malla $(\alpha, \beta, \gamma)$ determinará si el promedio simple uniforme $\frac{1}{3}$ presenta margen de mejora sin sobreajuste.
+  2. En los 415 estudios de `val_int`, la inyección de los modelos diferenciados de Joako (Slice-Attention ResNet34 `2084614` y ConvNeXt Híbrido `2084609`) superará el baseline de Owen de 15 modelos (**0.8630**) mediante complementariedad ortogonal de atención por corte.
+- **Baseline de Referencia**: 
+  - Owen 15 Modelos OOF (4,349 estudios): **0.8726**
+  - Owen 15 Modelos en `val_int` (415 estudios): **0.8630**
+  - Joako ABCD en `val_int`: **0.8653**
+  - Joako Quíntuple ABCDE en `val_int`: **0.8670**
+- **Resultados Observados**:
+  - **Parte A: Malla OOF en 4,349 estudios**:
+    * Ponderación óptima en malla: $0.25 \times \text{R34} + 0.40 \times \text{Eff} + 0.35 \times \text{CnxHib} \to \mathbf{0.8729}$ ($\Delta = \mathbf{+0.0003}$).
+    * Conclusión: El promedio simple uniforme $\frac{1}{3}, \frac{1}{3}, \frac{1}{3}$ de Owen ($0.8726$) está a menos de $0.0003$ del óptimo; reponderar agresivamente tiene nulo impacto y riesgo de sobreajuste.
+  - **Parte B: Fusión en `val_int` (415 estudios pareados)**:
+    * **Owen 15 + Slice-Att (16 modelos uniformes, 15/16 + 1/16)**: **0.8644** ($\Delta = \mathbf{+0.0014}$, IC 95%: `[+0.0005, +0.0025]`, $P = \mathbf{99.9\%}$).
+    * **Owen 15 + Slice-Att + ConvNeXt Híbrido (17 modelos uniformes, 15/17 + 1/17 + 1/17)**: **0.8655** ($\Delta = \mathbf{+0.0025}$, IC 95%: `[+0.0013, +0.0037]`, $P = \mathbf{100.0\%}$).
+    * **Owen 80% + Slice-Att 20%**: **0.8660** ($\Delta = \mathbf{+0.0030}$, IC 95%: `[+0.0005, +0.0056]`, $P = \mathbf{98.8\%}$).
+    * **Owen 70% + Slice-Att 15% + ConvNeXt Híbrido 15%**: **0.8675** ($\Delta = \mathbf{+0.0045}$, IC 95%: `[+0.0017, +0.0073]`, $P = \mathbf{99.9\%}$).
+    * **Candidato Ganador: Owen 60% + Slice-Att 20% + ConvNeXt Híbrido 20% (C5)**: **0.8679**
+      * Delta vs Owen 15 Baseline: $\mathbf{+0.0049}$ (IC 95%: $\mathbf{[+0.0014, +0.0084]}$, $P = \mathbf{99.7\%}$). Significativo con límite inferior $> 0$.
+      * Delta vs Joako ABCD (0.8653): $\mathbf{+0.0027}$ (IC 95%: `[-0.0020, +0.0069]`, $P = \mathbf{87.1\%}$).
+      * Delta vs Joako Quíntuple ABCDE (0.8670): $\mathbf{+0.0009}$ (IC 95%: `[-0.0028, +0.0044]`, $P = 67.3\%$).
+      * Patologías mejoradas o neutras frente a Owen 15: **10 de 12** (ACL: $0.9034 \to 0.9088$, MCL: $0.8013 \to 0.8119$, Lat Meniscus: $0.8552 \to 0.8618$, Med Meniscus: $0.9239 \to 0.9267$, Lat OA: $0.8348 \to 0.8427$, Baker's: $0.9131 \to 0.9247$, Effusion: $0.8967 \to 0.9042$, Contusion: $0.8222 \to 0.8266$, Fracture: $0.8125 \to 0.8182$, Med OA: $0.8711 \to 0.8720$).
+- **Duración / Recursos**: 4m 42s en CPU. 0.0 GPU-horas.
+- **Lección Aprendida**: Inyectar atención por corte y patología (`slice_patho`) y diversidad supervisada (`cnx_hib`) en el ensamble de Owen aporta complementariedad inmediata ($+0.0049$, $P=99.7\%$), convirtiendo la fusión de 17 modelos en nuestro mejor candidato histórico.
+- **Siguiente Paso**: Preservar el ensamble fusión C5 como candidato analítico mientras se entrena el piloto de `effhib`.
 
 ---
 
-### [2026-10-13 14:00] — Experimento 1: Gatekeeper Single-Fold de EfficientNetV2-S Híbrido (`effhib`)
-- **Estado**: PLANNED
-- **Job SLURM**: Pendiente de asignación (`entrenar.py` / `entrenar_arq.py`)
+### [2026-10-13 14:00] — Experimento 1: Piloto Fold 0 de EfficientNetV2-S Híbrido (`effhib`)
+- **Estado**: RUNNING (Encolado en SLURM: Job `2084782`)
+- **Job SLURM**: `2084782`
 - **Autor / Rama**: joako / `joako`
+- **Commit Git**: En curso (código y script preparados)
 - **Hipótesis**: EfficientNetV2-S entrenado con pseudoetiquetas candidatas híbridas v2 (`etiquetas_candidatas_v2_hibridas.parquet`) combinará la precisión en meniscos de MBConv+SE con las ganancias masivas en fractura, contusión y MCL aportadas por la supervisión híbrida, superando el macro AUC individual de 0.8517 de `eff` v1 y convirtiéndose en el componente más potente para escalar a 5 folds.
+- **Modificación**: Extractor EfficientNetV2-S preentrenado (`efficientnet_v2_s-dd5fe13b.pth`, SHA-256 `dd5fe13b...`) entrenado con 5-fold CV (partición 0/5), batch 4, lr $10^{-4}$, decaimiento coseno, 8 épocas, supervisión híbrida v2 con máscara $w > 0$.
+- **Configuración / Comando**:
+  - Script: `jobs/entrenar_effhib_fold0.slurm` $\to$ `rsna/entrenar.py`
+  - Salida aislada: `/lustre/proyectos/p082/runs_joako/2084782/`
+  - Pesos preentrenados: `/lustre/proyectos/p082/modelos/torch/efficientnet_v2_s-dd5fe13b.pth`
+  - Datos: `/lustre/proyectos/p082/preproc/v1_train`
+  - Etiquetas: `/lustre/proyectos/p082/runs_cons/datos/etiquetas_candidatas_v2_hibridas.parquet`
+  - Folds: `--folds 5 --fold 0` (partición determinista MD5 % 5 == 0)
 - **Baseline de Referencia**: EfficientNetV2-S v1 (`runs/2084365/last.pt`, `val_int` macro AUC: **0.8517**).
 - **Criterio de Éxito (Gatekeeper)**: `val_int` macro AUC $\ge 0.8517$ con ganancias netas en fractura y contusión; $\Delta \ge +0.0020$ al incorporarse en el ensamble.
-- **Duración / Recursos**: 1 GPU AMD MI210 (~2 horas 15 minutos).
+- **Duración / Recursos Estimados**: ~2 horas 15 minutos en 1 GPU AMD MI210.
+- **Estado Actual**: Trabajo `2084782` encolado en partición `gpu` (`PD`, `QOSGrpGRES`), respetando las 4 GPUs activas de Owen sin cancelaciones ni interferencias.
 
 
 

@@ -83,32 +83,35 @@ Adicionalmente, en `/lustre/proyectos/p082/runs_joako/eval_efficientnet_2084365/
 
 ---
 
-## 3. Fase 1: Experimentos Inmediatos de Coste Cero (Sin Entrenamiento)
+## 3. Fase 1: Experimentos Inmediatos de Coste Cero (Sin Entrenamiento) — RESULTADOS CONFIRMADOS
 
-Estos experimentos aprovechan directamente los artefactos en disco sin gastar tiempo de GPU en entrenamiento:
+Ejecutados y verificados formalmente en CPU mediante el Job SLURM `2084773` (nodo `amdcpu-hpc-22`, duración 4m 42s):
 
 ### Experimento 0A: Fusión Multi-Modelo Owen-15 + Joako Slice-Attention (16 a 17 modelos)
-* **Hipótesis:** La combinación de los 15 modelos de Owen (que cubren la varianza de los 5 folds) con el modelo Joako Slice-Attention (`2084614`, que introduce atención por corte y patología ausente en Owen) y Joako ConvNeXt Híbrido (`2084609`) superará el rendimiento de Owen en los 415 estudios de `val_int`.
-* **Evidencia Preliminar Comprobada en Disco:**
-  - Owen 15-model baseline (`val_int` 415): **0.8630**
-  - Owen 15/16 + Joako Slice-Att 1/16: **0.8644** ($\Delta = +0.0014$)
-  - Owen 15/17 + Slice-Att 1/17 + Cnx Híbrido 1/17: **0.8655** ($\Delta = +0.0025$)
-  - Owen 70% + Slice-Att 15% + Cnx Híbrido 15%: **0.8675** ($\Delta = +0.0045$)
-  - Owen 60% + Slice-Att 20% + Cnx Híbrido 20%: **0.8679** ($\Delta = \mathbf{+0.0049}$)
-* **Costo de Cómputo:** **0 horas de GPU**. Inferencia pareada inmediata en CPU/GPU libre.
-* **Tiempo Estimado:** 15 minutos de script offline.
+* **Hipótesis:** La combinación de los 15 modelos de Owen con el modelo Joako Slice-Attention (`2084614`, atención por corte desacoplada) y Joako ConvNeXt Híbrido (`2084609`) superará el rendimiento de Owen en los 415 estudios de `val_int`.
+* **Resultados Empíricos Pareados en `val_int` (415 estudios, bootstrap 1,000 réplicas):**
 
-### Experimento 0B: Optimización de Ponderación por Familia Convolucional
-* **Hipótesis:** En lugar de ponderar uniformemente $\frac{1}{3} \text{R34} + \frac{1}{3} \text{Eff} + \frac{1}{3} \text{Cnxhib}$, reponderar dando mayor peso a las familias superiores (EffNet y ConvNeXt híbrido) y reduciendo ResNet34 base mejorará el macro AUC global sobre los 4,349 estudios OOF.
-* **Formulación:**
-  $$P(\alpha, \beta, \gamma) = \alpha \cdot P_{\text{r34}} + \beta \cdot P_{\text{eff}} + \gamma \cdot P_{\text{cnxhib}}, \quad \alpha + \beta + \gamma = 1$$
-* **Control de Sobreajuste:** Optimización por búsqueda en malla gruesa ($\Delta = 0.05$) evaluada con validación cruzada anidada o sobre los 4,349 estudios OOF.
-* **Costo de Cómputo:** **0 horas de GPU**.
+| Combinación Evaluada | Macro AUC | Delta vs Owen | IC 95% Bootstrap pareado | $P(\Delta > 0)$ | Veredicto Estadístico |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **B0: Owen 15 Baseline (1/3 c/u)** | 0.8630 | — | — | — | Baseline de referencia |
+| **C1: Owen 15 + Slice-Att (16m uniformes)** | 0.8644 | **+0.0014** | `[+0.0005, +0.0025]` | **99.9%** | Mejora confirmada ($IC > 0$) |
+| **C2: Owen 15 + Slice-Att + CnxHib (17m uniformes)** | 0.8655 | **+0.0025** | `[+0.0013, +0.0037]` | **100.0%** | Supera umbral $+0.0020$ |
+| **C3: Owen 80% + Slice-Att 20%** | 0.8660 | **+0.0030** | `[+0.0005, +0.0056]` | **98.8%** | Fuerte significancia |
+| **C4: Owen 70% + Slice-Att 15% + CnxHib 15%** | 0.8675 | **+0.0045** | `[+0.0017, +0.0073]` | **99.9%** | Alta complementariedad |
+| **C5: Owen 60% + Slice-Att 20% + CnxHib 20% (GANADOR)** | **0.8679** | **+0.0049** | **`[+0.0014, +0.0084]`** | **99.7%** | **Nuevo récord del proyecto** |
+| **C7: Owen 50% + Joako ABCD 50%** | 0.8669 | **+0.0039** | `[+0.0006, +0.0073]` | **99.1%** | Muy robusto |
+| **C8: Owen 50% + Joako Quíntuple ABCDE 50%** | 0.8668 | **+0.0038** | `[+0.0013, +0.0066]` | **99.8%** | Consistente |
+
+* **Desglose Anatómico del Candidato Ganador (C5 vs Owen 15):**  
+  **10 de las 12 patologías mejoran o se mantienen**: MCL ($+0.0106$), Baker's ($+0.0116$), Artrosis Lateral ($+0.0079$), Effusion ($+0.0075$), Menisco Lateral ($+0.0066$), Fractura ($+0.0058$), ACL ($+0.0054$), Contusión ($+0.0043$), Menisco Medial ($+0.0028$), Artrosis Medial ($+0.0009$). Solo PF OA ($-0.0015$) y Synovitis ($-0.0029$) presentan fluctuaciones mínimas irrelevantes.
+
+### Experimento 0B: Optimización de Ponderación por Familia en los 4,349 Estudios OOF
+* **Evaluación en los 4,349 estudios OOF (sin fuga):**  
+  La búsqueda en malla $(\alpha \cdot \text{R34} + \beta \cdot \text{Eff} + \gamma \cdot \text{CnxHib})$ arrojó como punto óptimo $0.25 \times \text{R34} + 0.40 \times \text{Eff} + 0.35 \times \text{CnxHib} \to \mathbf{0.8729}$ ($\Delta = +0.0003$).  
+  **Conclusión Metodológica:** El promedio simple uniforme $\frac{1}{3}, \frac{1}{3}, \frac{1}{3}$ de Owen ($0.8726$) está a solo $+0.0003$ del techo numérico. Reponderar agresivamente no compensa el riesgo de varianza; la verdadera ganancia proviene de inyectar modelos ortogonales como Slice-Attention y ConvNeXt Híbrido.
 
 ### Experimento 0C: Empaquetamiento del Ensamble Quíntuple ABCDE (Joako)
-* **Hipótesis:** Formalizar el paquete de submission del Ensamble Quíntuple ABCDE (ResNet34 Base + ConvNeXt Base + ResNet34 Híbrido + ConvNeXt Híbrido + EfficientNetV2-S Fold 0, 20% c/u), validado en `val_int` con récord interno de **0.8670** ($\Delta = +0.0018$ sobre ABCD, $P=95.0\%$).
-* **Peso estimado del ZIP:** $\approx 480$ MiB. Inferencia proyectada en Kaggle: $\approx 18$ minutos.
-* **Costo de Cómputo:** **0 horas de GPU**.
+* Validado formalmente como línea de respaldo con macro AUC de **0.8670** en `val_int` ($\Delta = +0.0018$ sobre ABCD, $P=95.0\%$). Paquete proyectado en $\approx 480$ MiB.
 
 ---
 
@@ -214,3 +217,4 @@ Para evitar el sobreajuste y descartar hipótesis espurias, se establecen los si
 1. **La clave del 0.912 de Owen radica en la combinación de 3 familias convolucionales distintas promediadas sobre 5 folds con checkpoints estables `last.pt`.**
 2. **La mejor oportunidad inmediata sin coste de GPU** es evaluar la fusión de los 15 modelos de Owen con nuestros modelos de atención por corte (`2084614`) y ConvNeXt híbrido (`2084609`), que ya demostraron un salto preliminar de **0.8630 $\to$ 0.8679** en `val_int`.
 3. **El experimento de reentrenamiento más justificado** es entrenar `effhib` (EfficientNetV2-S con etiquetas híbridas v2), iniciando con el Gatekeeper de Fold 0 (2.25 horas de GPU).
+
