@@ -45,6 +45,7 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--peso-relleno", type=float, default=0.5, help="peso de las celdas rellenadas; 0 = no rellenar")
     ap.add_argument("--peso-minimo", type=float, default=0.2, help="fracción del peso que conserva una celda claramente discrepante; 1 = no desconfiar")
+    ap.add_argument("--umbral", type=float, default=0.0, help="si es > 0, en vez de la mezcla se marca como sospechosa toda celda con discrepancia mayor que este valor")
     args = ap.parse_args()
 
     table = pd.read_parquet(args.labels).set_index("StudyInstanceUID")
@@ -56,7 +57,7 @@ def main():
     print(f"base: {args.labels.name}; maestro: {len(groups)} grupos, época {epoch}; estudios corregidos: {len(uid_int)}; oficiales: {len(uid_off)}")
 
     out = table.copy()
-    rows, checks = [], []
+    rows, checks, gaps = [], [], []
     for c in LABELS:
         t, w = table.loc[uid_int, f"t_{c}"], table.loc[uid_int, f"w_{c}"]
         p = teacher[c]
@@ -68,6 +69,8 @@ def main():
         noisy = int(np.argmax(gmm.means_.ravel()))
 
         def suspicion(g: np.ndarray) -> np.ndarray:
+            if args.umbral > 0:
+                return (g > args.umbral).astype(float)
             return gmm.predict_proba(g[:, None])[:, noisy]
 
         s = suspicion(gap.ravel())
@@ -93,6 +96,7 @@ def main():
         s_o = suspicion(np.abs(t_o[h] - p_o[h]))
         wrong = np.abs(t_o[h] - y[h]) > 0.5          # el objetivo del informe cae del lado contrario a la verdad
         flag = s_o > 0.5
+        gaps.append(np.stack([np.abs(t_o[h] - p_o[h]), wrong], axis=1))
         checks.append((c, int((~h).sum()), auc(y[~h], p_o[~h]) if (~h).sum() > 1 else float("nan"),
                        int(flag.sum()), int(wrong[flag].sum()), int((~flag).sum()), int(wrong[~flag].sum())))
 
@@ -110,6 +114,13 @@ def main():
     print(f"{'TOTAL':<17}{'':>30}{tot[0]:>12}{tot[1]:>13}{tot[2]:>10}{tot[3]:>13}")
     if tot[0] and tot[2]:
         print(f"objetivos del lado equivocado: {tot[1] / tot[0] * 100:.0f} % entre las sospechosas, {tot[3] / tot[2] * 100:.0f} % entre las demás")
+
+    gaps = np.concatenate(gaps)
+    print("\n-- En los 58 oficiales, según el umbral de discrepancia (todos los hallazgos juntos)")
+    print(f"{'umbral':<8}{'por encima':>11}{'mal %':>7}{'por debajo':>12}{'mal %':>7}")
+    for u in (0.2, 0.3, 0.4, 0.5, 0.6, 0.7):
+        m = gaps[:, 0] > u
+        print(f"{u:<8}{int(m.sum()):>11}{gaps[m, 1].mean() * 100 if m.any() else float('nan'):>7.0f}{int((~m).sum()):>12}{gaps[~m, 1].mean() * 100:>7.0f}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     out.reset_index().to_parquet(args.out, index=False)
