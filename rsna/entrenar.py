@@ -88,6 +88,7 @@ def main():
     ap.add_argument("--weights", default="", help="pesos preentrenados de torchvision (.pth)")
     ap.add_argument("--epochs", type=int, default=8)
     ap.add_argument("--batch", type=int, default=8)
+    ap.add_argument("--acumular", type=int, default=1, help="lotes cuyos gradientes se suman antes de cada paso del optimizador")
     ap.add_argument("--slices", type=int, default=16, help="cortes por ranura que ve el modelo")
     ap.add_argument("--crop", type=int, default=288)
     ap.add_argument("--lr", type=float, default=2e-4)
@@ -124,9 +125,10 @@ def main():
     train = train[has_target]
     if args.limit:
         train = train.head(args.limit)
+    n_slots = int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[0])   # series por estudio
     print(f"entrenamiento={len(train)} validación interna={len(val_int)} validación oficial={len(official)} "
           f"partición={args.fold}/{args.folds} aug={args.aug} quitar_serie={args.quitar_serie} mixup={args.mixup} "
-          f"consistencia={args.consistencia} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+          f"consistencia={args.consistencia} series={n_slots} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
 
     def loader(tab, train_mode):
         return DataLoader(Studies(tab, args.data, args.crop, train_mode), batch_size=args.batch, shuffle=train_mode,
@@ -134,10 +136,10 @@ def main():
                           persistent_workers=args.workers > 0)
 
     dl_train, dl_int, dl_off = loader(train, True), loader(val_int, False), loader(official, False)
-    model = KneeNet(args.backbone, args.weights or None).to(device).to(memory_format=torch.channels_last)
+    model = KneeNet(args.backbone, args.weights or None, n_slots=n_slots).to(device).to(memory_format=torch.channels_last)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
-    steps = args.epochs * len(dl_train)
-    warm = max(1, len(dl_train) // 2)
+    steps = args.epochs * len(dl_train) // args.acumular
+    warm = max(1, len(dl_train) // 2 // args.acumular)
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: (s + 1) / warm if s < warm else 0.5 * (1 + math.cos(math.pi * (s - warm) / max(1, steps - warm))))
     scaler = torch.amp.GradScaler("cuda", enabled=amp)
@@ -163,6 +165,7 @@ def main():
     preds_int, preds_off = [], []
     for epoch in range(1, args.epochs + 1):
         model.train()
+        opt.zero_grad(set_to_none=True)
         t0, seen, loss_sum = time.time(), 0, 0.0
         for step, (x, present, t, w, _) in enumerate(dl_train, 1):
             raw, present = x.to(device, non_blocking=True), present.to(device)
@@ -192,11 +195,12 @@ def main():
                     ref = lam * ref + (1 - lam) * ref[perm]
                 ramp = min(1.0, (step + (epoch - 1) * len(dl_train)) / len(dl_train))   # sube durante la primera época
                 loss = loss + args.consistencia * ramp * ((logits.float().sigmoid() - ref) ** 2).mean()
-            opt.zero_grad(set_to_none=True)
-            scaler.scale(loss).backward()
-            scaler.unscale_(opt)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            scaler.step(opt); scaler.update(); sched.step()
+            scaler.scale(loss / args.acumular).backward()
+            if step % args.acumular == 0:
+                scaler.unscale_(opt)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+                scaler.step(opt); scaler.update(); sched.step()
+                opt.zero_grad(set_to_none=True)
             seen += x.shape[0]; loss_sum += loss.item() * x.shape[0]
             if step in (5, 20, 50) or step % 100 == 0:
                 rate = seen / (time.time() - t0)
@@ -226,7 +230,7 @@ def main():
             except Exception as exc:
                 print(f"MLflow: {type(exc).__name__}: {exc}", flush=True)
 
-        state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop,
+        state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots,
                  "size": int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[-1]),
                  "epoch": epoch, "auc_interna": auc_int, "auc_oficial": auc_off, "labels": LABELS}
         torch.save(state, args.out / "last.pt")
