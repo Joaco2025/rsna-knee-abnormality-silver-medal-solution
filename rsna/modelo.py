@@ -7,8 +7,11 @@ ranuras se concatenan para dar 12 salidas.
 """
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision
 
 LABELS = ["ACL", "MCL", "Medial Meniscus", "Lateral Meniscus", "Medial OA", "Lateral OA", "PF OA",
@@ -49,11 +52,52 @@ class KneeNet(nn.Module):
         return self.head(z.flatten(1))
 
 
-def prepare(x: torch.Tensor, n_slices: int, train: bool) -> torch.Tensor:
+def augment(x: torch.Tensor) -> torch.Tensor:
+    """Aumentación fuerte de (B, S, T, 3, H, W) en [0, 1]. Cada serie recibe una transformación
+    propia, la misma en todos sus cortes: giro de ±10°, escala de ±10 %, desplazamiento de ±5 %,
+    gamma, ruido y un rectángulo borrado. No hay volteos: invertirían medial y lateral.
+    """
+    b, s, t, c, h, w = x.shape
+    n, dev = b * s, x.device
+    ang = (torch.rand(n, device=dev) - 0.5) * 2 * math.radians(10)
+    scale = 1 + (torch.rand(n, device=dev) - 0.5) * 0.2
+    shift = (torch.rand(n, 2, device=dev) - 0.5) * 0.2          # en unidades de la rejilla [-1, 1]
+    cos, sin = torch.cos(ang) / scale, torch.sin(ang) / scale
+    theta = torch.stack([torch.stack([cos, -sin, shift[:, 0]], 1), torch.stack([sin, cos, shift[:, 1]], 1)], 1)
+    flat = x.reshape(n, t * c, h, w)
+    grid = F.affine_grid(theta, list(flat.shape), align_corners=False)
+    flat = F.grid_sample(flat, grid, mode="bilinear", padding_mode="zeros", align_corners=False)
+
+    gamma = torch.exp((torch.rand(n, 1, 1, 1, device=dev) - 0.5) * 0.6)
+    flat = flat.clamp(min=1e-4) ** gamma
+    flat = flat + torch.randn_like(flat) * (torch.rand(n, 1, 1, 1, device=dev) * 0.03)
+
+    # Rectángulo borrado, de entre el 10 % y el 25 % del lado.
+    size = (0.10 + 0.15 * torch.rand(n, 2, device=dev)) * torch.tensor([h, w], device=dev)
+    top = torch.rand(n, 2, device=dev) * (torch.tensor([h, w], device=dev) - size)
+    rows = torch.arange(h, device=dev)[None, :, None]
+    cols = torch.arange(w, device=dev)[None, None, :]
+    hole = ((rows >= top[:, 0, None, None]) & (rows < (top[:, 0] + size[:, 0])[:, None, None])
+            & (cols >= top[:, 1, None, None]) & (cols < (top[:, 1] + size[:, 1])[:, None, None]))
+    flat = flat.masked_fill(hole[:, None], 0.0)
+    return flat.clamp(0, 1).reshape(b, s, t, c, h, w)
+
+
+def drop_slot(x: torch.Tensor, present: torch.Tensor, p: float) -> tuple[torch.Tensor, torch.Tensor]:
+    """Con probabilidad p apaga una serie al azar de cada estudio, si le quedan al menos dos."""
+    b, s = present.shape
+    pick = torch.multinomial(present + 1e-6, 1).squeeze(1)
+    go = (torch.rand(b, device=x.device) < p) & (present.sum(dim=1) >= 2)
+    keep = torch.ones_like(present)
+    keep[go, pick[go]] = 0
+    return x * keep.view(b, s, 1, 1, 1, 1).to(x.dtype), present * keep
+
+
+def prepare(x: torch.Tensor, n_slices: int, train: bool, strong: bool = False) -> torch.Tensor:
     """De (B, S, D, H, W) uint8 en GPU a (B, S, T, 3, H, W) float normalizado.
 
     Toma T cortes equiespaciados (con desplazamiento aleatorio al entrenar) y a cada uno le añade
-    sus dos vecinos como canales.
+    sus dos vecinos como canales. Con strong=True aplica además la aumentación fuerte.
     """
     b, s, d, h, w = x.shape
     stride = max(1, d // n_slices)
@@ -66,6 +110,8 @@ def prepare(x: torch.Tensor, n_slices: int, train: bool) -> torch.Tensor:
         gain = 1 + 0.2 * (torch.rand(b, 1, 1, 1, 1, 1, device=x.device) - 0.5)
         bias = 0.1 * (torch.rand(b, 1, 1, 1, 1, 1, device=x.device) - 0.5)
         x = (x * gain + bias).clamp(0, 1)
+    if strong:
+        x = augment(x)
     mean = torch.tensor(MEAN, device=x.device).view(1, 1, 1, 3, 1, 1)
     std = torch.tensor(STD, device=x.device).view(1, 1, 1, 3, 1, 1)
     return (x - mean) / std

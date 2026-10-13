@@ -31,7 +31,7 @@ from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from modelo import LABELS, KneeNet, prepare  # noqa: E402
+from modelo import LABELS, KneeNet, drop_slot, prepare  # noqa: E402
 
 
 class Studies(Dataset):
@@ -96,6 +96,12 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="estudios de entrenamiento, para pruebas")
     ap.add_argument("--no-amp", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--aug", default="suave", choices=["suave", "fuerte"],
+                    help="fuerte añade giro, escala, desplazamiento, gamma, ruido y borrado por serie")
+    ap.add_argument("--quitar-serie", type=float, default=0.0, help="probabilidad de apagar una serie al azar de cada estudio")
+    ap.add_argument("--mixup", type=float, default=0.0, help="alfa de la mezcla de pares de estudios; 0 = sin mezcla")
+    ap.add_argument("--consistencia", type=float, default=0.0,
+                    help="peso de la penalización por predecir distinto en la versión suave y en la fuerte del mismo estudio")
     ap.add_argument("--folds", type=int, default=10, help="número de particiones de la validación interna")
     ap.add_argument("--fold", type=int, default=0, help="partición que se aparta para validar")
     ap.add_argument("--mlflow", default="", help="URI de seguimiento de MLflow (p. ej. sqlite:////ruta/mlflow.db); vacío = no registrar")
@@ -119,7 +125,8 @@ def main():
     if args.limit:
         train = train.head(args.limit)
     print(f"entrenamiento={len(train)} validación interna={len(val_int)} validación oficial={len(official)} "
-          f"partición={args.fold}/{args.folds} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+          f"partición={args.fold}/{args.folds} aug={args.aug} quitar_serie={args.quitar_serie} mixup={args.mixup} "
+          f"consistencia={args.consistencia} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
 
     def loader(tab, train_mode):
         return DataLoader(Studies(tab, args.data, args.crop, train_mode), batch_size=args.batch, shuffle=train_mode,
@@ -158,11 +165,33 @@ def main():
         model.train()
         t0, seen, loss_sum = time.time(), 0, 0.0
         for step, (x, present, t, w, _) in enumerate(dl_train, 1):
-            x = prepare(x.to(device, non_blocking=True), args.slices, train=True)
+            raw, present = x.to(device, non_blocking=True), present.to(device)
             t, w = t.to(device), w.to(device)
+            strong = args.aug == "fuerte" or args.consistencia > 0
+            if args.consistencia > 0:   # la versión suave sirve de referencia y no recibe gradiente
+                with torch.no_grad(), torch.autocast("cuda", dtype=torch.float16, enabled=amp):
+                    ref = model(prepare(raw, args.slices, train=True), present).float().sigmoid()
+            x = prepare(raw, args.slices, train=True, strong=strong)
+            if args.quitar_serie > 0:
+                x, present = drop_slot(x, present, args.quitar_serie)
+            lam, perm = 1.0, None
+            if args.mixup > 0:
+                lam = float(np.random.beta(args.mixup, args.mixup))
+                perm = torch.randperm(x.shape[0], device=device)
+                x = lam * x + (1 - lam) * x[perm]
+                present = torch.maximum(present, present[perm])
             with torch.autocast("cuda", dtype=torch.float16, enabled=amp):
-                logits = model(x, present.to(device))
-            loss = (F.binary_cross_entropy_with_logits(logits.float(), t, reduction="none") * w).sum() / w.sum().clamp(min=1)
+                logits = model(x, present)
+
+            def bce(tt, ww):
+                return (F.binary_cross_entropy_with_logits(logits.float(), tt, reduction="none") * ww).sum() / ww.sum().clamp(min=1)
+
+            loss = bce(t, w) if perm is None else lam * bce(t, w) + (1 - lam) * bce(t[perm], w[perm])
+            if args.consistencia > 0:
+                if perm is not None:
+                    ref = lam * ref + (1 - lam) * ref[perm]
+                ramp = min(1.0, (step + (epoch - 1) * len(dl_train)) / len(dl_train))   # sube durante la primera época
+                loss = loss + args.consistencia * ramp * ((logits.float().sigmoid() - ref) ** 2).mean()
             opt.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(opt)
