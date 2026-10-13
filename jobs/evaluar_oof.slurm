@@ -33,7 +33,11 @@ set -u
 # De nombre=JOB,JOB a nombre=runs/JOB,runs/JOB
 GROUPS_ARG=()
 for g in "$@"; do
-    GROUPS_ARG+=("${g%%=*}=$PROJ/runs/$(sed "s#,#,$PROJ/runs/#g" <<<"${g#*=}")")
+    if [[ "$g" == *=* ]]; then
+        GROUPS_ARG+=("${g%%=*}=$PROJ/runs/$(sed "s#,#,$PROJ/runs/#g" <<<"${g#*=}")")
+    else
+        GROUPS_ARG+=("$g")      # opciones de evaluar_oof.py, p. ej. --max-combo 2
+    fi
 done
 
 "$PROJ/venvs/rsna/bin/python" rsna/evaluar_oof.py --labels "$LABELS" --out "$OUT" "${GROUPS_ARG[@]}"

@@ -46,6 +46,7 @@ def main():
     ap.add_argument("grupos", nargs="+", help="nombre=dir0,dir1,... con las corridas de cada partición")
     ap.add_argument("--labels", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--max-combo", type=int, default=0, help="tamaño máximo de las combinaciones de grupos; 0 = todas")
     args = ap.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
@@ -54,7 +55,7 @@ def main():
     for spec in args.grupos:
         name, dirs = spec.split("=", 1)
         groups[name] = load_group([Path(d) for d in dirs.split(",")])
-    epochs = int(min(g[2][0] for g in groups.values()))
+    last = {n: int(g[2][0]) for n, g in groups.items()}       # cada grupo se mide en su última época
     uid_int = next(iter(groups.values()))[0].index
     uid_off = next(iter(groups.values()))[1].index
     assert all(set(g[0].index) == set(uid_int) for g in groups.values()), "los grupos no cubren los mismos estudios"
@@ -64,37 +65,42 @@ def main():
     y_int = (np.nan_to_num(t) >= 0.5).astype(int)
     y_off = table.loc[uid_off, [f"y_{c}" for c in LABELS]].to_numpy(int)
 
-    def score(names: tuple[str, ...], epoch: int):
-        p_int = np.mean([groups[n][0].loc[uid_int, epoch].to_numpy() for n in names], axis=0)
-        p_off = np.mean([groups[n][1].loc[uid_off, epoch].to_numpy() for n in names], axis=0)
+    def score(names: tuple[str, ...], epoch: int | None = None):
+        p_int = np.mean([groups[n][0].loc[uid_int, epoch or last[n]].to_numpy() for n in names], axis=0)
+        p_off = np.mean([groups[n][1].loc[uid_off, epoch or last[n]].to_numpy() for n in names], axis=0)
         return macro_auc(y_int, p_int, w), macro_auc(y_off, p_off)
 
-    lines = [f"estudios fuera de muestra: {len(uid_int)}; oficiales: {len(uid_off)}; épocas: {epochs}", "",
+    lines = [f"objetivos: {args.labels.name}; estudios fuera de muestra: {len(uid_int)}; oficiales: {len(uid_off)}", "",
              "-- AUC macro por época (interna fuera de muestra / oficial con el promedio de las particiones)",
              f"{'época':<7}" + "".join(f"{n:>18}" for n in groups)]
-    for e in range(1, epochs + 1):
-        cells = [score((n,), e) for n in groups]
-        lines.append(f"{e:<7}" + "".join(f"{a[0]:>10.4f} /{b[0]:>6.4f}" for a, b in cells))
+    for e in range(1, max(last.values()) + 1):
+        cells = [score((n,), e) if e <= last[n] else None for n in groups]
+        lines.append(f"{e:<7}" + "".join(f"{c[0][0]:>10.4f} /{c[1][0]:>6.4f}" if c else f"{'':>18}" for c in cells))
 
-    combos = [c for k in range(1, len(groups) + 1) for c in combinations(groups, k)]
-    res = {c: score(c, epochs) for c in combos}
-    lines += ["", f"-- Última época ({epochs}): AUC por hallazgo, interna fuera de muestra",
-              f"{'hallazgo':<17}{'casos+':>7}{'total':>7}" + "".join(f"{'+'.join(c):>14}" for c in combos)]
-    for j, c in enumerate(LABELS):
-        m = w[:, j] > 0
-        lines.append(f"{c:<17}{int(y_int[m, j].sum()):>7}{int(m.sum()):>7}" + "".join(f"{res[k][0][1][j]:>14.4f}" for k in combos))
-    lines.append(f"{'MEDIA':<31}" + "".join(f"{res[k][0][0]:>14.4f}" for k in combos))
-    lines += ["", "-- Última época: AUC por hallazgo en los 58 oficiales (promedio de las particiones)",
-              f"{'hallazgo':<17}" + "".join(f"{'+'.join(c):>14}" for c in combos)]
-    for j, c in enumerate(LABELS):
-        lines.append(f"{c:<17}" + "".join(f"{res[k][1][1][j]:>14.4f}" for k in combos))
-    lines.append(f"{'MEDIA':<17}" + "".join(f"{res[k][1][0]:>14.4f}" for k in combos))
+    top = args.max_combo or len(groups)
+    combos = [c for k in range(1, top + 1) for c in combinations(groups, k)]
+    res = {c: score(c) for c in combos}
+    lines += ["", "-- Combinaciones (media de probabilidades; cada grupo en su última época), de mejor a peor interna",
+              f"{'interna':>8}{'oficial':>9}  combinación"]
+    for c in sorted(combos, key=lambda c: -res[c][0][0]):
+        lines.append(f"{res[c][0][0]:>8.4f}{res[c][1][0]:>9.4f}  {' + '.join(c)}")
+
+    best = max((c for c in combos if len(c) > 1), key=lambda c: res[c][0][0], default=None)
+    cols = [(n,) for n in groups] + ([best] if best else [])
+    heads = [c[0] if len(c) == 1 else "mejor" for c in cols]
+    for kind, k in (("interna fuera de muestra", 0), ("en los 58 oficiales (promedio de las particiones)", 1)):
+        lines += ["", f"-- AUC por hallazgo, {kind}", f"{'hallazgo':<17}" + "".join(f"{h:>11}" for h in heads)]
+        for j, c in enumerate(LABELS):
+            lines.append(f"{c:<17}" + "".join(f"{res[col][k][1][j]:>11.4f}" for col in cols))
+        lines.append(f"{'MEDIA':<17}" + "".join(f"{res[col][k][0]:>11.4f}" for col in cols))
+    if best:
+        lines += ["", f"mejor = {' + '.join(best)}"]
 
     print("\n".join(lines), flush=True)
     (args.out / "oof.txt").write_text("\n".join(lines) + "\n")
     # Predicciones fuera de muestra de la última época, para el autoentrenamiento y los pesos del conjunto.
     for n, (oof, _, _) in groups.items():
-        oof[epochs].loc[uid_int].rename_axis("StudyInstanceUID").reset_index().to_parquet(args.out / f"oof_{n}.parquet", index=False)
+        oof[last[n]].loc[uid_int].rename_axis("StudyInstanceUID").reset_index().to_parquet(args.out / f"oof_{n}.parquet", index=False)
 
 
 if __name__ == "__main__":
