@@ -45,6 +45,7 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--peso-relleno", type=float, default=0.5, help="peso de las celdas rellenadas; 0 = no rellenar")
     ap.add_argument("--peso-minimo", type=float, default=0.2, help="fracción del peso que conserva una celda claramente discrepante; 1 = no desconfiar")
+    ap.add_argument("--rellenar", default="", help="hallazgos que se rellenan, separados por comas; vacío = todos")
     ap.add_argument("--umbral", type=float, default=0.0, help="si es > 0, en vez de la mezcla se marca como sospechosa toda celda con discrepancia mayor que este valor")
     args = ap.parse_args()
 
@@ -79,7 +80,7 @@ def main():
 
         # Relleno de las celdas sin objetivo.
         t_new = t.astype("float64")
-        if args.peso_relleno > 0:
+        if args.peso_relleno > 0 and (not args.rellenar or c in args.rellenar.split(",")):
             t_new[~has] = p[~has]
             w_new[~has] = args.peso_relleno
         out.loc[uid_int, f"t_{c}"] = t_new.astype("float32")
