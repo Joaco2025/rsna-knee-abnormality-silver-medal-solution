@@ -1,6 +1,6 @@
 # Qué se ha intentado y cómo resultó
 
-Estado al 12 de octubre de 2026, 21:00. Cierre de envíos: 22 de octubre.
+Estado al 12 de octubre de 2026, 22:40. Cierre de envíos: 22 de octubre.
 Mejor puntuación en la tabla pública de Kaggle: **0.898** (objetivo: pasar de 0.900).
 
 Cómo leer los números:
@@ -25,7 +25,7 @@ Cómo leer los números:
 | Lo mismo con un modelo médico (MedGemma 27B de texto) | Mismo 83 %, cuatro veces más rápido. El límite es lo que dice el informe, no quién lo lee. |
 | Etiquetar mirando las imágenes con MedGemma 1.5 4B sin ajuste | No sirve: AUC de 0.61 a 0.66. Algo ve en derrame y sinovitis, nada en ligamentos y meniscos. |
 | Objetivos graduados en vez de 0/1; "no mencionado" sin peso | En uso. Deja sin objetivo el 72 % de los estudios en sinovitis y el 42 % en Baker. |
-| Tabla híbrida: Qwen + etiquetas públicas de otros participantes (Cons) | Prometedor, sin demostrar. Las etiquetas públicas coinciden mejor con los 58 oficiales (0.887 frente a 0.820). El ResNet-34 reentrenado sube el ensamble de 0.8574 a 0.8582 al medirlo con la misma tabla; el "+0.019" que figura en su informe compara tablas distintas. En Kaggle, +0.001. **Prueba en curso** en 5 particiones (arreglo 2084587). |
+| Tabla híbrida: Qwen + etiquetas públicas de otros participantes (Cons) | Prometedor, sin demostrar. Las etiquetas públicas coinciden mejor con los 58 oficiales (0.887 frente a 0.820). El ResNet-34 reentrenado sube el ensamble de 0.8574 a 0.8582 al medirlo con la misma tabla; el "+0.019" que figura en su informe compara tablas distintas. En Kaggle, +0.001. **Prueba en 5 particiones con ResNet-34 (arreglo 2084587): gana.** Fuera de muestra 0.8464 frente a 0.8413 medido contra nuestra tabla y 0.8540 frente a 0.8427 contra la híbrida; en oficiales 0.866 frente a 0.860. Sube fractura, contusión y sinovitis; baja Baker y MCL. Pasa a ser la tabla base. |
 
 ## Modelos y entrenamiento
 
@@ -34,8 +34,8 @@ Arquitectura común (`rsna/modelo.py`): cuatro series por estudio (sagital con y
 | Intento | Resultado |
 |---|---|
 | ResNet-34, 5 particiones | Interna fuera de muestra 0.8413. Cada modelo suelto da 0.818–0.855 en los oficiales; el promedio de los cinco, 0.860. Promediar particiones ayuda. |
-| ConvNeXt-Tiny, 5 particiones | Cuatro terminadas: interna 0.847–0.858, oficial 0.850–0.875. Seis veces más lenta que ResNet-34 (2 h 45 min por partición). |
-| EfficientNetV2-S | Con lote 8 agota los 64 GB de la GPU. Con lote 4 y tasa 1e-4 cabe: partición 0 con interna 0.853 y oficial 0.860, la mejor red suelta en esa partición. Resto de particiones en curso (arreglo 2084584). |
+| ConvNeXt-Tiny, 5 particiones | Interna fuera de muestra 0.8542; promedio de las cinco en oficiales 0.881. Con ResNet-34 (10 modelos): 0.8606 y 0.881, igual en oficiales que el envío de 0.897 (0.879). Seis veces más lenta que ResNet-34 (2 h 45 min por partición). |
+| EfficientNetV2-S | Con lote 8 agota los 64 GB de la GPU. Con lote 4 y tasa 1e-4 cabe: partición 0 con interna 0.853 y oficial 0.860, la mejor red suelta en esa partición. Particiones 1 y 2: interna 0.863 y 0.855, oficial 0.875 y 0.867. Las dos últimas en curso (arreglo 2084584). |
 | Más resolución (tensores a 384, recorte 352) con ResNet-34 | **No mejora**: 0.8403 frente a 0.8413 fuera de muestra, 0.857 frente a 0.860 en oficiales, con 1.5 veces el cómputo. |
 | Quinta vista, coronal sin supresión grasa (Joako) | **No mejora**: +0.002 con intervalo que incluye el cero; fractura empeora. |
 | Más épocas | Sin indicios de que ayude: ResNet-34 se aplana entre las épocas 7 y 8; en EfficientNetV2-S la pérdida sigue bajando pero el AUC se detiene en la época 4 (sobreajuste leve a las etiquetas). |
@@ -62,11 +62,20 @@ Arquitectura común (`rsna/modelo.py`): cuatro series por estudio (sagital con y
 | Entrenar primero con las etiquetas manuales y añadir después las derivadas | Solo hay 58 estudios con etiquetas manuales. |
 | Volteo horizontal como aumento | Solo sería válido como espejo coherente en los tres planos; no se ha implementado y el TTA aporta poco. |
 
+## En cola o corriendo (noche del 12 de octubre)
+
+- ConvNeXt-Tiny y EfficientNetV2-S en 5 particiones con la tabla híbrida (arreglos 2084633 y 2084634).
+- Tres variantes de aumentación con ResNet-34 en 5 particiones y 12 épocas: aumentación fuerte (2084625), con mezcla de estudios (2084628) y con consistencia entre versiones (2084629). La aumentación fuerte es giro, escala, desplazamiento, gamma, ruido, borrado de un rectángulo y apagado de una serie.
+- Preentrenamiento sin etiquetas sobre nuestros cortes (MoCo v3 desde ImageNet, job 2084630), con una aumentación genérica. Sirve de primera referencia.
+
+## Pendiente acordado
+
+- **Preentrenamiento sin etiquetas con la aumentación ganadora** (propuesta de Fernando): cuando se sepa cuál de las tres variantes de aumentación rinde más, repetir el preentrenamiento usando esa misma aumentación para generar las dos versiones de cada corte, y comparar con el de aumentación genérica.
+
 ## Sin probar todavía, por orden de interés
 
-1. Reentrenar con etiquetas corregidas usando las predicciones fuera de muestra: rellenar las celdas "no mencionado" y bajar el peso de las que el modelo contradice con fuerza.
+1. Rellenar con las predicciones fuera de muestra las celdas que el informe no menciona. El ensayo con ResNet-34 como maestro (`rsna/tabla_corregida.py`) solo respalda hacerlo en sinovitis (AUC 0.77 en las 33 celdas sin mención de los 58 oficiales; Baker 0.32). Bajar el peso de las celdas que el modelo contradice quedó descartado: dos de cada tres celdas marcadas tenían la etiqueta correcta.
 2. Reentrenar ConvNeXt-Tiny y EfficientNetV2-S con la tabla híbrida, si gana la prueba en curso.
-3. Penalización de consistencia entre versiones alteradas de la misma imagen (diferencias entre equipos y hospitales).
 4. Más peso a los positivos en los hallazgos raros y peores (MCL, contusión, fractura: 8–10 % de positivos, AUC de 0.77–0.79). Con AUC como métrica se espera poco; la pérdida focal tiene el riesgo de concentrarse en etiquetas erróneas.
 5. Red recurrente (GRU) entre cortes en vez de la atención actual.
 6. Red 3D preentrenada en video (R3D-18) como miembro distinto del ensamble.
