@@ -21,6 +21,19 @@ import pydicom
 DEPTH, SIZE = 32, 320
 SLOTS = [("Sagittal", 1), ("Sagittal", 0), ("Coronal", 1), ("Axial", 1)]
 SLOT_NAMES = ["sag_fs", "sag_nofs", "cor_fs", "ax_fs"]
+# Variante de 6 ranuras: las cuatro de siempre, en el mismo orden, más coronal y axial no sensibles
+# a líquido. Las cuatro primeras se eligen igual, así que un tensor de 6 contiene al de 4.
+SLOTS6 = SLOTS + [("Coronal", 0), ("Axial", 0)]
+_SHORT = {"Sagittal": "sag", "Coronal": "cor", "Axial": "ax"}
+
+
+def slots_for(n: int) -> list[tuple[str, int]]:
+    assert n in (4, 6), "solo hay variantes de 4 y de 6 ranuras"
+    return SLOTS if n == 4 else SLOTS6
+
+
+def slot_names(slots: list[tuple[str, int]]) -> list[str]:
+    return [f"{_SHORT[plane]}_{'fs' if fs else 'nofs'}" for plane, fs in slots]
 
 # Orientación canónica en coordenadas del paciente (LPS: +x izquierda, +y posterior, +z craneal):
 # hacia dónde crecen las columnas, hacia dónde crecen las filas y en qué sentido se ordenan los cortes.
@@ -31,7 +44,7 @@ CANON = {
 }
 
 
-def select_series(series: list[dict]) -> list[dict | None]:
+def select_series(series: list[dict], slots: list[tuple[str, int]] = SLOTS) -> list[dict | None]:
     """Elige una serie por ranura.
 
     `series`: dicts con SeriesInstanceUID, Anatomical_Plane, Fluid_Sensitive y n_slices.
@@ -44,7 +57,7 @@ def select_series(series: list[dict]) -> list[dict | None]:
 
     chosen: list[dict | None] = []
     used: set[str] = set()
-    for plane, fs in SLOTS:
+    for plane, fs in slots:
         free = [s for s in series if s["Anatomical_Plane"] == plane and s["SeriesInstanceUID"] not in used]
         pick = best([s for s in free if int(s["Fluid_Sensitive"]) == fs]) or best(free)
         if pick:
@@ -137,17 +150,19 @@ def to_fixed(vol: np.ndarray, spacing: tuple[float, float], depth: int = DEPTH, 
     return np.clip(out * 255 + 0.5, 0, 255).astype(np.uint8)
 
 
-def build_study(study_dir: str | os.PathLike, series: list[dict], depth: int = DEPTH, size: int = SIZE) -> tuple[np.ndarray, dict]:
-    """Tensor (4, depth, size, size) uint8 de un estudio y un resumen de lo que se usó."""
+def build_study(study_dir: str | os.PathLike, series: list[dict], depth: int = DEPTH, size: int = SIZE,
+                slots: list[tuple[str, int]] = SLOTS) -> tuple[np.ndarray, dict]:
+    """Tensor (ranuras, depth, size, size) uint8 de un estudio y un resumen de lo que se usó."""
     study_dir = Path(study_dir)
     for s in series:
         if "n_slices" not in s:
             d = study_dir / s["SeriesInstanceUID"]
             s["n_slices"] = sum(n.endswith(".dcm") for n in os.listdir(d)) if d.is_dir() else 0
-    out = np.zeros((len(SLOTS), depth, size, size), dtype=np.uint8)
+    out = np.zeros((len(slots), depth, size, size), dtype=np.uint8)
     info: dict = {}
-    for k, pick in enumerate(select_series(series)):
-        name = SLOT_NAMES[k]
+    names = slot_names(slots)
+    for k, pick in enumerate(select_series(series, slots)):
+        name = names[k]
         info[f"{name}_presente"] = False
         if pick is None:
             continue

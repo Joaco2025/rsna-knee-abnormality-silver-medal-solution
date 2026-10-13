@@ -22,12 +22,12 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from modelo import LABELS, KneeNet, prepare  # noqa: E402
-from preproc import DEPTH, SIZE, SLOTS, build_study  # noqa: E402
+from preproc import DEPTH, SIZE, build_study, slots_for  # noqa: E402
 
 
 class TestStudies(Dataset):
-    def __init__(self, uids: list[str], series: pd.DataFrame, root: Path, crop: int):
-        self.uids, self.root, self.crop = uids, root, crop
+    def __init__(self, uids: list[str], series: pd.DataFrame, root: Path, crop: int, n_slots: int = 4):
+        self.uids, self.root, self.crop, self.slots = uids, root, crop, slots_for(n_slots)
         cols = ["SeriesInstanceUID", "Anatomical_Plane", "Fluid_Sensitive"]
         self.by_study = {u: g[cols].to_dict("records") for u, g in series.groupby("StudyInstanceUID")}
 
@@ -38,9 +38,9 @@ class TestStudies(Dataset):
         uid = self.uids[i]
         ok = 1.0
         try:
-            arr, _ = build_study(self.root / uid, self.by_study.get(uid, []))
+            arr, _ = build_study(self.root / uid, self.by_study.get(uid, []), slots=self.slots)
         except Exception:   # estudio ilegible: tensor vacío, se marcará para devolver 0.5
-            arr, ok = np.zeros((len(SLOTS), DEPTH, SIZE, SIZE), np.uint8), 0.0
+            arr, ok = np.zeros((len(self.slots), DEPTH, SIZE, SIZE), np.uint8), 0.0
         off = (SIZE - self.crop) // 2
         x = torch.from_numpy(np.ascontiguousarray(arr[:, :, off:off + self.crop, off:off + self.crop]))
         present = (x.flatten(1).amax(dim=1) > 0).float()
@@ -73,13 +73,14 @@ def main():
         state = torch.load(path, map_location="cpu")
         model = KneeNet(state["backbone"], None, n_slots=state.get("n_slots", 4), per_label=state.get("per_label", False))
         model.load_state_dict(state["model"])
-        models.append((model.to(device).eval().to(memory_format=torch.channels_last), state["slices"], state["crop"]))
+        models.append((model.to(device).eval().to(memory_format=torch.channels_last), state["slices"], state["crop"], state.get("n_slots", 4)))
         print(f"modelo {path.name}: red={state['backbone']} cortes={state['slices']} recorte={state['crop']} "
               f"época={state.get('epoch')} AUC oficial={state.get('auc_oficial', float('nan')):.4f}", flush=True)
     crop = models[0][2]
     assert all(m[2] == crop for m in models), "todos los modelos deben usar el mismo recorte"
 
-    loader = DataLoader(TestStudies(uids, series, args.data / f"{args.split}_series", crop),
+    n_slots = max(m[3] for m in models)     # el tensor de 6 ranuras contiene al de 4 en sus primeras posiciones
+    loader = DataLoader(TestStudies(uids, series, args.data / f"{args.split}_series", crop, n_slots),
                         batch_size=args.batch, num_workers=args.workers, pin_memory=amp)
     probs, oks = [], []
     t0 = time.time()
@@ -87,9 +88,9 @@ def main():
         for i, (x, present, ok) in enumerate(loader, 1):
             x, present = x.to(device, non_blocking=True), present.to(device)
             acc = torch.zeros(x.shape[0], len(LABELS), device=device)
-            for model, n_slices, _ in models:
+            for model, n_slices, _, k in models:
                 with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                    acc += model(prepare(x, n_slices, train=False), present).float().sigmoid()
+                    acc += model(prepare(x[:, :k], n_slices, train=False), present[:, :k]).float().sigmoid()
             probs.append((acc / len(models)).cpu().numpy())
             oks.append(ok.numpy())
             if i % 50 == 0:

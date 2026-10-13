@@ -13,7 +13,7 @@
 # Convierte cada estudio DICOM en un tensor (4, 32, 320, 320) uint8: sagital FS, sagital no FS,
 # coronal FS y axial FS, en orientación canónica y con intensidad normalizada por serie.
 # El lote completo de train son 4,407 archivos de 13 MB, unos 58 GB en total.
-# Lanzar desde code/:  sbatch jobs/preprocesar.slurm [VERSION] [LIMITE] [train|test] [LADO]
+# Lanzar desde code/:  sbatch jobs/preprocesar.slurm [VERSION] [LIMITE] [train|test] [LADO] [SERIES]
 #   VERSION: nombre de la carpeta de salida bajo preproc/ (por defecto v1)
 #   LIMITE:  número de estudios, para pruebas; 0 = todos
 #   LADO:    lado en píxeles del tensor (por defecto 320); a 384 el lote de train son unos 83 GB
@@ -24,6 +24,7 @@ VERSION=${1:-v1}
 LIMIT=${2:-0}
 SPLIT=${3:-train}
 SIDE=${4:-320}
+NSERIES=${5:-4}      # 6 añade coronal y axial no sensibles a líquido
 
 # --- Rutas -------------------------------------------------------------------
 PROJ=/lustre/proyectos/p082
@@ -43,7 +44,7 @@ export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1   # un hilo po
 export OPENCV_FOR_THREADS_NUM=1
 
 # --- Trabajo -----------------------------------------------------------------
-"$PY" rsna/preprocesar.py --out "$OUT" --split "$SPLIT" --workers "${SLURM_CPUS_PER_TASK:?}" --limit "$LIMIT" --size "$SIDE" --qa 12
+"$PY" rsna/preprocesar.py --out "$OUT" --split "$SPLIT" --workers "${SLURM_CPUS_PER_TASK:?}" --limit "$LIMIT" --size "$SIDE" --series "$NSERIES" --qa 12
 
 du -sh "$OUT"
 echo "fin=$(date -Is)"
