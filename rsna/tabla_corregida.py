@@ -74,11 +74,11 @@ def main():
             return gmm.predict_proba(g[:, None])[:, noisy]
 
         s = suspicion(gap.ravel())
-        w_new = w.copy()
+        w_new = w.astype("float64")
         w_new[has] = w[has] * (1 - (1 - args.peso_minimo) * s)
 
         # Relleno de las celdas sin objetivo.
-        t_new = t.copy()
+        t_new = t.astype("float64")
         if args.peso_relleno > 0:
             t_new[~has] = p[~has]
             w_new[~has] = args.peso_relleno
