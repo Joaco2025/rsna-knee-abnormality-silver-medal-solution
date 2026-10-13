@@ -4,9 +4,12 @@ Código del equipo para la competencia de Kaggle
 [RSNA Knee Abnormalities Detection](https://www.kaggle.com/competitions/rsna-knee-abnormalities-detection),
 desarrollado en el cluster Yuca (ACARUS, Universidad de Sonora).
 
-**Estado al 11 de octubre de 2026:** los datos están explorados y verificados, y hay etiquetas
-aproximadas para los 4,407 estudios de entrenamiento. Falta lo que produce un envío:
-preprocesar las imágenes, entrenar un modelo de imagen y escribir el notebook de inferencia.
+**Estado al 13 de octubre de 2026:** el circuito completo funciona (etiquetas derivadas, preprocesamiento,
+entrenamiento con validación cruzada, inferencia en Kaggle) y la mejor puntuación pública es **0.912**.
+
+**Qué se ha intentado, con qué resultado, dónde está cada archivo y qué hay en cola: ver
+[EXPERIMENTOS.md](EXPERIMENTOS.md).** Las secciones "Qué está hecho" y "Qué falta" de más abajo describen
+la etapa inicial del proyecto (exploración y etiquetas) y no se han actualizado.
 
 ## La competencia en una página
 
