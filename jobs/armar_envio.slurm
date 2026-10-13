@@ -35,7 +35,6 @@ cp "$PROJ"/envios/v2_r34_cnx/wheels/*.whl "$DEST/wheels/"
 { echo "envío $NAME, armado el $(date -Is) con el commit $(git rev-parse --short HEAD)"; echo "promedio simple de las probabilidades de todos los modelos"; } > "$DEST/MANIFIESTO.txt"
 for g in "$@"; do
     group=${g%%=*}
-    for job in ${g#*=}; do :; done
     IFS=, read -ra jobs <<<"${g#*=}"
     for job in "${jobs[@]}"; do
         src="$PROJ/runs/$job/last.pt"
