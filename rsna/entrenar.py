@@ -106,6 +106,7 @@ def main():
     ap.add_argument("--slices", type=int, default=16, help="cortes por ranura que ve el modelo")
     ap.add_argument("--crop", type=int, default=288)
     ap.add_argument("--lr", type=float, default=2e-4)
+    ap.add_argument("--lr-red", type=float, default=0.0, help="tasa de aprendizaje de la red preentrenada; 0 = la misma que el resto")
     ap.add_argument("--wd", type=float, default=1e-2)
     ap.add_argument("--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK", 8)) - 2)
     ap.add_argument("--limit", type=int, default=0, help="estudios de entrenamiento, para pruebas")
@@ -175,7 +176,9 @@ def main():
     dl_train, dl_int, dl_off = loader(train, True), loader(val_int, False), loader(official, False)
     model = KneeNet(args.backbone, args.weights or None, n_slots=n_slots, per_label=args.atencion == "hallazgo",
                     context=args.contexto == "gru", pool=args.pool, view_gate=args.vistas == "hallazgo").to(device).to(memory_format=torch.channels_last)
-    opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
+    enc = [p for n, p in model.named_parameters() if n.startswith("encoder.")]
+    rest = [p for n, p in model.named_parameters() if not n.startswith("encoder.")]
+    opt = torch.optim.AdamW([{"params": enc, "lr": args.lr_red or args.lr}, {"params": rest, "lr": args.lr}], weight_decay=args.wd)
     steps = args.epochs * len(dl_train) // args.acumular
     warm = max(1, len(dl_train) // 2 // args.acumular)
     sched = torch.optim.lr_scheduler.LambdaLR(

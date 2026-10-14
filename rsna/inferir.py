@@ -41,8 +41,7 @@ class TestStudies(Dataset):
             arr, _ = build_study(self.root / uid, self.by_study.get(uid, []), slots=self.slots)
         except Exception:   # estudio ilegible: tensor vacío, se marcará para devolver 0.5
             arr, ok = np.zeros((len(self.slots), DEPTH, SIZE, SIZE), np.uint8), 0.0
-        off = (SIZE - self.crop) // 2
-        x = torch.from_numpy(np.ascontiguousarray(arr[:, :, off:off + self.crop, off:off + self.crop]))
+        x = torch.from_numpy(arr)        # entero: cada modelo recorta el centro a su tamaño
         present = (x.flatten(1).amax(dim=1) > 0).float()
         if present.sum() == 0:
             ok = 0.0
@@ -78,8 +77,7 @@ def main():
         models.append((model.to(device).eval().to(memory_format=torch.channels_last), state["slices"], state["crop"], state.get("n_slots", 4)))
         print(f"modelo {path.name}: red={state['backbone']} cortes={state['slices']} recorte={state['crop']} "
               f"época={state.get('epoch')} AUC oficial={state.get('auc_oficial', float('nan')):.4f}", flush=True)
-    crop = models[0][2]
-    assert all(m[2] == crop for m in models), "todos los modelos deben usar el mismo recorte"
+    crop = SIZE
 
     n_slots = max(m[3] for m in models)     # el tensor de 6 ranuras contiene al de 4 en sus primeras posiciones
     loader = DataLoader(TestStudies(uids, series, args.data / f"{args.split}_series", crop, n_slots),
@@ -90,9 +88,10 @@ def main():
         for i, (x, present, ok) in enumerate(loader, 1):
             x, present = x.to(device, non_blocking=True), present.to(device)
             acc = torch.zeros(x.shape[0], len(LABELS), device=device)
-            for model, n_slices, _, k in models:
+            for model, n_slices, c, k in models:
+                o = (x.shape[-1] - c) // 2
                 with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                    acc += model(prepare(x[:, :k], n_slices, train=False), present[:, :k]).float().sigmoid()
+                    acc += model(prepare(x[:, :k, :, o:o + c, o:o + c], n_slices, train=False), present[:, :k]).float().sigmoid()
             probs.append((acc / len(models)).cpu().numpy())
             oks.append(ok.numpy())
             if i % 50 == 0:

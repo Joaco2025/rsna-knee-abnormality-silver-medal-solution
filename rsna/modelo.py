@@ -19,7 +19,33 @@ LABELS = ["ACL", "MCL", "Medial Meniscus", "Lateral Meniscus", "Medial OA", "Lat
 MEAN, STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
 
 
+class ViTEncoder(nn.Module):
+    """Transformer de visión de timm (DINOv2) con la misma interfaz que las redes convolucionales:
+    devuelve un mapa (N, C, alto, ancho), aquí el de los parches con el token global sumado."""
+
+    def __init__(self, timm_name: str, weights_path: str | None):
+        super().__init__()
+        import timm
+        # Con archivo de pesos, timm convierte el formato original de Meta; sin él, la red queda vacía
+        # y se rellena después desde el checkpoint (así no hace falta red en Kaggle).
+        extra = {"pretrained": True, "pretrained_cfg_overlay": {"file": weights_path}} if weights_path else {"pretrained": False}
+        self.net = timm.create_model(timm_name, num_classes=0, dynamic_img_size=True, **extra)
+        self.patch = self.net.patch_embed.patch_size[0]
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        n, _, h, w = x.shape
+        tok = self.net.forward_features(x)
+        cls, patches = tok[:, 0], tok[:, self.net.num_prefix_tokens:]
+        return (patches + cls[:, None]).transpose(1, 2).reshape(n, -1, h // self.patch, w // self.patch)
+
+
+VIT = {"dinov2_vits14": "vit_small_patch14_dinov2.lvd142m", "dinov2_vitb14": "vit_base_patch14_dinov2.lvd142m"}
+
+
 def make_encoder(name: str, weights_path: str | None) -> tuple[nn.Module, int]:
+    if name in VIT:
+        enc = ViTEncoder(VIT[name], weights_path)
+        return enc, enc.net.num_features
     net = torchvision.models.get_model(name, weights=None)
     if weights_path:
         net.load_state_dict(torch.load(weights_path, map_location="cpu"))
