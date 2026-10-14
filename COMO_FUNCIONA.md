@@ -43,7 +43,7 @@ de cada serie se toman 16 de los 32 cortes; cada uno va con sus dos vecinos como
 los tres canales de color de una foto (así la red ve un poco de profundidad)
    │
    ▼
-red de imágenes preentrenada (ResNet-34, ConvNeXt-Tiny o EfficientNetV2-S), que ya aprendió a
+red convolucional preentrenada (ResNet-34, ConvNeXt-Tiny o EfficientNetV2-S), que ya aprendió a
 reconocer bordes, texturas y formas con millones de fotos (ImageNet) y que aquí se reentrena
    │
    ▼
@@ -51,6 +51,12 @@ cada corte se resume en una lista de ~500 a 1,300 números que describe lo que c
 ```
 
 Son 4 series × 16 cortes = **64 imágenes por estudio**.
+
+Las tres redes son **convolucionales**: pasan pequeños filtros (de 3 × 3 o 7 × 7 píxeles) por toda la
+imagen, capa tras capa. Las primeras capas detectan bordes y texturas; las siguientes combinan eso en
+formas cada vez más grandes (el contorno de un menisco, la superficie del cartílago, una zona de
+edema en el hueso). Al final, cada corte queda descrito por la lista de números del paso siguiente.
+También probamos un transformer de visión (DINOv2), que funciona distinto, y por ahora rinde peor.
 
 ## 3. Decidir qué cortes importan
 
