@@ -143,6 +143,8 @@ def to_fixed(vol: np.ndarray, spacing: tuple[float, float], depth: int = DEPTH, 
     Con crop_mm > 0 se toma una caja física de crop_mm x crop_mm centrada en el corte (así todas las
     rodillas quedan a la misma escala, sea cual sea el campo de visión del equipo); si no, el campo de
     visión completo. z_range es la fracción de los cortes que se cubre (p. ej. 0.02 a 0.98)."""
+    if crop_mm > 0:   # primero la caja física: así la ventana de intensidad no la decide lo que queda fuera
+        vol = _center(vol, max(int(round(crop_mm / spacing[0])), 8), max(int(round(crop_mm / spacing[1])), 8))
     sample = vol[:, ::4, ::4]
     lo, hi = np.percentile(sample, [0.5, 99.5])
     vol = np.clip((vol - lo) / max(hi - lo, 1e-6), 0, 1)
@@ -156,9 +158,7 @@ def to_fixed(vol: np.ndarray, spacing: tuple[float, float], depth: int = DEPTH, 
     vol = vol[i0] * (1 - w) + vol[i1] * w
 
     # Relleno a campo de visión cuadrado en milímetros, para no deformar la anatomía.
-    if crop_mm > 0:
-        vol = _center(vol, max(int(round(crop_mm / spacing[0])), 8), max(int(round(crop_mm / spacing[1])), 8))
-    else:
+    if crop_mm <= 0:
         h_mm, w_mm = vol.shape[1] * spacing[0], vol.shape[2] * spacing[1]
         side = max(h_mm, w_mm)
         pad_h = int(round((side - h_mm) / spacing[0] / 2))
