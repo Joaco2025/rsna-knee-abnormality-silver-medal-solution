@@ -68,6 +68,7 @@ def main():
     ap.add_argument("--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK", 8)))
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--size", type=int, default=SIZE, help="lado en píxeles del tensor guardado")
+    ap.add_argument("--rehacer", action="store_true", help="volver a generar también los estudios que ya tienen .npy (los sobrescribe)")
     ap.add_argument("--crop-mm", type=float, default=0.0, help="lado en mm de la caja física centrada que se conserva; 0 = campo de visión completo")
     ap.add_argument("--z-min", type=float, default=0.0, help="fracción inicial de los cortes que se cubre")
     ap.add_argument("--z-max", type=float, default=1.0, help="fracción final de los cortes que se cubre")
@@ -86,7 +87,7 @@ def main():
     tasks = [(uid, grp[cols].to_dict("records")) for uid, grp in series.groupby("StudyInstanceUID", sort=True)]
     if args.limit:
         tasks = tasks[: args.limit]
-    todo = [t for t in tasks if not (OUT / f"{t[0]}.npy").exists()]
+    todo = tasks if args.rehacer else [t for t in tasks if not (OUT / f"{t[0]}.npy").exists()]
     print(f"split={SPLIT} estudios={len(tasks)} ya_hechos={len(tasks) - len(todo)} por_hacer={len(todo)} "
           f"forma=({N_SLOTS},{DEPTH},{SIDE},{SIDE}) procesos={args.workers}", flush=True)
 
@@ -100,7 +101,7 @@ def main():
 
     meta_path = OUT / "meta.parquet"
     meta = pd.DataFrame(rows)
-    if meta_path.exists():   # reanudación: conservar lo ya registrado
+    if meta_path.exists() and not args.rehacer:   # reanudación: conservar lo ya registrado
         old = pd.read_parquet(meta_path)
         meta = pd.concat([old[~old.StudyInstanceUID.isin(meta.StudyInstanceUID)], meta], ignore_index=True) if len(meta) else old
     meta.to_parquet(meta_path, index=False)
