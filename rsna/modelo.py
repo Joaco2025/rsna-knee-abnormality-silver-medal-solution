@@ -80,10 +80,16 @@ def make_encoder(name: str, weights_path: str | None) -> tuple[nn.Module, int]:
 class KneeNet(nn.Module):
     def __init__(self, backbone: str = "resnet34", weights_path: str | None = None,
                  n_slots: int = 4, n_out: int = len(LABELS), dropout: float = 0.3, per_label: bool = False,
-                 context: bool = False, pool: str = "media", view_gate: bool = False, syn_eff: bool = False):
+                 context: bool = False, pool: str = "media", view_gate: bool = False, syn_eff: bool = False,
+                 slice_pos: bool = False):
         super().__init__()
         self.backbone, self.per_label, self.context, self.pool = backbone, per_label, context, pool
         self.n_out = n_out
+        # Posición relativa del corte en su serie (-1 a 1), proyectada y sumada a cada corte; parte de cero.
+        # Con el lado unificado, en sagital dice si el corte es medial o lateral.
+        self.pos_lin = nn.Linear(1, feat, bias=False) if slice_pos else None
+        if self.pos_lin is not None:
+            nn.init.zeros_(self.pos_lin.weight)
         # Sinovitis = salida propia + beta * salida de derrame (sin gradiente hacia derrame); beta parte de 0.
         self.syn_beta = nn.Parameter(torch.zeros(())) if syn_eff else None
         self.encoder, feat = make_encoder(backbone, weights_path)
@@ -123,6 +129,8 @@ class KneeNet(nn.Module):
         else:
             f = f.mean(dim=(2, 3))
         f = f.float().view(b, s, t, -1) + self.slot_emb[None, :, None, :]
+        if self.pos_lin is not None:
+            f = f + self.pos_lin(torch.linspace(-1, 1, t, device=f.device)[:, None]).float()[None, None]
         if self.context:
             with torch.autocast(device_type=x.device.type, enabled=False):
                 pos = F.interpolate(self.slice_emb, size=t, mode="linear", align_corners=False)     # (1, F, T)

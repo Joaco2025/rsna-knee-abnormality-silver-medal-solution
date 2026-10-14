@@ -95,12 +95,12 @@ def predict(model, loader, device, n_slices: int, amp: bool, tta_planes: list[st
     for x, present, t, w, y in loader:
         raw, present = x.to(device, non_blocking=True), present.to(device)
         with torch.autocast("cuda", dtype=torch.float16, enabled=amp):
-            p = model(prepare(raw, n_slices, train=False), present).float().sigmoid()
+            z = model(prepare(raw, n_slices, train=False), present).float()
             if tta_planes:
-                pm = model(prepare(mirror_batch(raw, tta_planes), n_slices, train=False), present).float().sigmoid()[:, SWAP]
-                pm[:, MCL] = p[:, MCL]
-                p = (p + pm) / 2
-        ps.append(p.cpu().numpy())
+                zm = model(prepare(mirror_batch(raw, tta_planes), n_slices, train=False), present).float()[:, SWAP]
+                zm[:, MCL] = z[:, MCL]
+                z = (z + zm) / 2
+        ps.append(z.sigmoid().cpu().numpy())
         ts.append(t.numpy()); ws.append(w.numpy()); ys.append(y.numpy())
     return np.concatenate(ps), np.concatenate(ts), np.concatenate(ws), np.concatenate(ys)
 
@@ -131,6 +131,7 @@ def main():
     ap.add_argument("--espejo", type=float, default=0.0,
                     help="probabilidad de entrenar cada estudio en espejo intercambiando las etiquetas medial y lateral (requiere --lados)")
     ap.add_argument("--tta-espejo", action="store_true", help="al validar, promediar con la predicción en espejo (requiere --lados)")
+    ap.add_argument("--posicion", action="store_true", help="sumar a cada corte su posición relativa en la serie")
     ap.add_argument("--sinovitis-derrame", action="store_true", help="sinovitis = salida propia + beta aprendido * salida de derrame")
     ap.add_argument("--vistas", default="comun", choices=["comun", "hallazgo"],
                     help="hallazgo: cada hallazgo aprende cuánto pesa cada serie (requiere --atencion hallazgo)")
@@ -171,7 +172,7 @@ def main():
     n_slots = int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[0])   # series por estudio
     print(f"entrenamiento={len(train)} validación interna={len(val_int)} validación oficial={len(official)} "
           f"partición={args.fold}/{args.folds} aug={args.aug} quitar_serie={args.quitar_serie} mixup={args.mixup} "
-          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} contexto={args.contexto} pool={args.pool} vistas={args.vistas} lados={'si' if args.lados else 'no'} espejo={args.espejo} tta_espejo={args.tta_espejo} sinovitis_derrame={args.sinovitis_derrame} peso_hallazgos={args.peso_hallazgos or '-'} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} contexto={args.contexto} pool={args.pool} vistas={args.vistas} lados={'si' if args.lados else 'no'} espejo={args.espejo} tta_espejo={args.tta_espejo} sinovitis_derrame={args.sinovitis_derrame} posicion={args.posicion} peso_hallazgos={args.peso_hallazgos or '-'} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
 
     left = None
     if args.lados:
@@ -200,7 +201,7 @@ def main():
     dl_train, dl_int, dl_off = loader(train, True), loader(val_int, False), loader(official, False)
     model = KneeNet(args.backbone, args.weights or None, n_slots=n_slots, per_label=args.atencion == "hallazgo",
                     context=args.contexto == "gru", pool=args.pool, view_gate=args.vistas == "hallazgo",
-                    syn_eff=args.sinovitis_derrame).to(device).to(memory_format=torch.channels_last)
+                    syn_eff=args.sinovitis_derrame, slice_pos=args.posicion).to(device).to(memory_format=torch.channels_last)
     enc = [p for n, p in model.named_parameters() if n.startswith("encoder.")]
     rest = [p for n, p in model.named_parameters() if not n.startswith("encoder.")]
     opt = torch.optim.AdamW([{"params": enc, "lr": args.lr_red or args.lr}, {"params": rest, "lr": args.lr}], weight_decay=args.wd)
@@ -297,7 +298,7 @@ def main():
                 print(f"MLflow: {type(exc).__name__}: {exc}", flush=True)
 
         state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots, "per_label": args.atencion == "hallazgo", "context": args.contexto == "gru", "pool": args.pool, "view_gate": args.vistas == "hallazgo", "mirror_left": bool(args.lados),
-                 "mirror_tta": args.tta_espejo, "syn_eff": args.sinovitis_derrame,
+                 "mirror_tta": args.tta_espejo, "syn_eff": args.sinovitis_derrame, "slice_pos": args.posicion,
                  "crop_mm": float(info.get("crop_mm", 0.0)), "z_range": list(info.get("z_range", [0.0, 1.0])),
                  "size": int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[-1]),
                  "epoch": epoch, "auc_interna": auc_int, "auc_oficial": auc_off, "labels": LABELS}

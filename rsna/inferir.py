@@ -77,7 +77,8 @@ def main():
         state = torch.load(path, map_location="cpu")
         model = KneeNet(state["backbone"], None, n_slots=state.get("n_slots", 4), per_label=state.get("per_label", False),
                         context=state.get("context", False), pool=state.get("pool", "media"),
-                        view_gate=state.get("view_gate", False), syn_eff=state.get("syn_eff", False))
+                        view_gate=state.get("view_gate", False), syn_eff=state.get("syn_eff", False),
+                        slice_pos=state.get("slice_pos", False))
         model.load_state_dict(state["model"])
         variant = (float(state.get("crop_mm", 0.0)), tuple(state.get("z_range", (0.0, 1.0))))
         models.append({"net": model.to(device).eval().to(memory_format=torch.channels_last), "slices": state["slices"],
@@ -106,12 +107,12 @@ def main():
                 if m["mirror_left"]:       # las rodillas izquierdas se llevan a la orientación de las derechas
                     xin = torch.where(left.view(-1, 1, 1, 1, 1), mirror_batch(xin, planes), xin)
                 with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                    p = m["net"](prepare(xin, m["slices"], train=False), present[:, :k]).float().sigmoid()
-                    if m["mirror_tta"]:    # promedio con el estudio en espejo, devolviendo medial y lateral a su sitio
-                        pm = m["net"](prepare(mirror_batch(xin, planes), m["slices"], train=False), present[:, :k]).float().sigmoid()[:, SWAP]
-                        pm[:, MCL] = p[:, MCL]
-                        p = (p + pm) / 2
-                acc += p
+                    z = m["net"](prepare(xin, m["slices"], train=False), present[:, :k]).float()
+                    if m["mirror_tta"]:    # promedio (en logits) con el estudio en espejo, devolviendo medial y lateral a su sitio
+                        zm = m["net"](prepare(mirror_batch(xin, planes), m["slices"], train=False), present[:, :k]).float()[:, SWAP]
+                        zm[:, MCL] = z[:, MCL]     # el MCL solo con la pasada sin espejo
+                        z = (z + zm) / 2
+                acc += z.sigmoid()
             probs.append((acc / len(models)).cpu().numpy())
             oks.append(ok.numpy())
             if i % 50 == 0:
