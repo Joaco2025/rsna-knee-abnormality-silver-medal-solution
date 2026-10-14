@@ -70,27 +70,37 @@ PESO_YUCA = {"ACL": 0.18, "Baker's": 0.18, "Medial OA": 0.16, "MCL": 0.15, "Medi
              "Lateral OA": 0.00, "Synovitis": 0.00}
 
 pub = pd.read_csv("/kaggle/working/submission_publica.csv", dtype={"StudyInstanceUID": str})
-if not globals().get("YUCA_OK", False) or not os.path.exists("/kaggle/working/yuca_sub.csv"):
-    pub.to_csv("/kaggle/working/submission.csv", index=False)
-    raise SystemExit("sin rama propia: queda la mezcla pública")
-yuca = pd.read_csv("/kaggle/working/yuca_sub.csv", dtype={"StudyInstanceUID": str})
-yuca = yuca.drop_duplicates("StudyInstanceUID").set_index("StudyInstanceUID").reindex(pub["StudyInstanceUID"]).reset_index()
-
-# Estudios que nuestra rama no pudo leer (deja 0.5 en todo) o que le faltan: ahí manda solo la rama pública.
-sin_yuca = yuca[LABELS].isna().any(axis=1) | (yuca[LABELS] == 0.5).all(axis=1)
-print("estudios:", len(pub), "| sin predicción propia:", int(sin_yuca.sum()))
-
-r_pub = pub[LABELS].rank(method="average", pct=True)
-r_yuca = yuca[LABELS].rank(method="average", pct=True)
-final = pub.copy()
-for col in LABELS:
-    w = np.where(sin_yuca, 0.0, PESO_YUCA[col])
-    final[col] = (1.0 - w) * r_pub[col] + w * r_yuca[col].fillna(0.0)
-final[LABELS] = final[LABELS].rank(method="average", pct=True)
-
 ref = pd.read_csv(f"{DATA}/sample_submission.csv")
-assert list(final.columns) == list(ref.columns), "las columnas no coinciden con sample_submission.csv"
-assert len(final) == len(pd.read_csv(f"{DATA}/test.csv")), "falta algún estudio"
-assert np.isfinite(final[LABELS].to_numpy()).all() and ((final[LABELS] >= 0) & (final[LABELS] <= 1)).all().all()
+
+
+def mezclar(pub: pd.DataFrame) -> pd.DataFrame:
+    yuca = pd.read_csv("/kaggle/working/yuca_sub.csv", dtype={"StudyInstanceUID": str})
+    yuca = yuca.drop_duplicates("StudyInstanceUID").set_index("StudyInstanceUID").reindex(pub["StudyInstanceUID"]).reset_index()
+
+    # Estudios que nuestra rama no pudo leer (deja 0.5 en todo) o que le faltan: ahí manda solo la rama pública.
+    sin_yuca = yuca[LABELS].isna().any(axis=1) | (yuca[LABELS] == 0.5).all(axis=1)
+    print("estudios:", len(pub), "| sin predicción propia:", int(sin_yuca.sum()))
+
+    r_pub = pub[LABELS].rank(method="average", pct=True)
+    r_yuca = yuca[LABELS].rank(method="average", pct=True)
+    final = pub.copy()
+    for col in LABELS:
+        w = np.where(sin_yuca, 0.0, PESO_YUCA[col])
+        final[col] = (1.0 - w) * r_pub[col] + w * r_yuca[col].fillna(0.0)
+    final[LABELS] = final[LABELS].rank(method="average", pct=True)
+
+    assert list(final.columns) == list(ref.columns), "las columnas no coinciden con sample_submission.csv"
+    assert len(final) == len(pd.read_csv(f"{DATA}/test.csv")), "falta algún estudio"
+    assert np.isfinite(final[LABELS].to_numpy()).all() and ((final[LABELS] >= 0) & (final[LABELS] <= 1)).all().all()
+    return final
+
+
+# Sin rama propia (no hubo tiempo o falló) se envía la mezcla pública tal cual; nunca se deja el notebook en error.
+if globals().get("YUCA_OK", False) and os.path.exists("/kaggle/working/yuca_sub.csv"):
+    final = mezclar(pub)
+    print("mezcla pública + propia")
+else:
+    final = pub
+    print("solo la mezcla pública")
 final.to_csv("/kaggle/working/submission.csv", index=False)
-print("mezcla pública + propia escrita:", final.shape)
+print("submission.csv escrito:", final.shape)
