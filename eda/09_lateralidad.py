@@ -21,22 +21,6 @@ import pandas as pd
 from sklearn.metrics import roc_auc_score
 
 
-def vec(v) -> np.ndarray | None:
-    try:
-        a = np.asarray(v if not isinstance(v, str) else v.strip("[]").replace(",", " ").split(), dtype=float)
-        return a if a.size in (2, 3, 6) else None
-    except Exception:
-        return None
-
-
-def center_x(row) -> float:
-    """Coordenada x (izquierda del paciente) del centro del corte."""
-    pos, iop, sp = vec(row.ImagePositionPatient), vec(row.ImageOrientationPatient), vec(row.PixelSpacing)
-    if pos is None or iop is None or sp is None or pd.isna(row.Rows) or pd.isna(row.Columns):
-        return np.nan
-    return float(pos[0] + iop[0] * sp[1] * (row.Columns - 1) / 2 + iop[3] * sp[0] * (row.Rows - 1) / 2)
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cabeceras", type=Path)
@@ -44,7 +28,7 @@ def main():
     args = ap.parse_args()
     h = pd.read_parquet(args.cabeceras)
     print(f"series: {len(h):,}; estudios: {h.StudyInstanceUID.nunique():,}; columnas usadas presentes: "
-          f"{[c for c in ('Laterality', 'ImagePositionPatient', 'ImageOrientationPatient', 'PixelSpacing', 'Rows', 'Columns', 'Anatomical_Plane') if c in h]}")
+          f"{[c for c in ('Laterality', 'eje_normal', 'pos_normal_mm', 'Anatomical_Plane') if c in h]}")
 
     lat = h.Laterality.astype(str).str.strip().str.upper().map({"R": "R", "RIGHT": "R", "L": "L", "LEFT": "L"})
     h = h.assign(lado=lat)
@@ -52,11 +36,13 @@ def main():
     print(f"\nestudios con Laterality en alguna serie: {len(per):,} ({len(per) / h.StudyInstanceUID.nunique() * 100:.1f} %)")
     print(per.value_counts().to_string())
 
-    plane = h.Anatomical_Plane if "Anatomical_Plane" in h else pd.Series("?", index=h.index)
-    h = h.assign(cx=[center_x(r) for r in h.itertuples()], plano=plane)
+    # La tabla de cabeceras guarda, de un corte por serie, su posición a lo largo de la normal del corte
+    # (pos_normal_mm) y qué eje es esa normal (0 = x, sagital). En las series sagitales esa posición es,
+    # salvo el signo de la normal, la coordenada izquierda-derecha del corte.
     study = pd.DataFrame({"lado": per.reindex(h.StudyInstanceUID.unique())})
-    for name, mask in (("coronal+axial", h.plano.isin(["Coronal", "Axial"])), ("todas", pd.Series(True, index=h.index))):
-        study[f"x_{name}"] = h[mask].groupby("StudyInstanceUID").cx.median()
+    sag = h[h.eje_normal == 0]
+    study["x_sagital"] = sag.groupby("StudyInstanceUID").pos_normal_mm.median()
+    study["x_sagital_min"] = sag.groupby("StudyInstanceUID").pos_normal_mm.min()
     known = study[study.lado.isin(["R", "L"])]
     print(f"\n-- Posición x del centro (mm; +x = izquierda del paciente) en los {len(known):,} estudios con lado conocido")
     for col in [c for c in study if c.startswith("x_")]:
@@ -72,7 +58,7 @@ def main():
             sel = margin > m
             print(f"  con |x| > {m} mm: {sel.mean() * 100:.0f} % de los estudios, acierto {np.mean(((k[col] > 0) == (y == 1))[sel]) * 100:.1f} %")
 
-    col = "x_coronal+axial"
+    col = "x_sagital"
     study["lado_estimado"] = np.where(study[col] > 0, "L", "R")
     study.loc[study[col].isna(), "lado_estimado"] = None
     study["lado_final"] = study.lado.where(study.lado.isin(["R", "L"]), study.lado_estimado)
