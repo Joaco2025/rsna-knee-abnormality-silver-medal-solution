@@ -1,0 +1,83 @@
+[
+ {
+  "nombre": "envio-owen-v6-cv20",
+  "metricas": {
+   "kaggle_publica": 0.92,
+   "auc_fuera_de_muestra_hibrida": 0.8873,
+   "auc_fuera_de_muestra": 0.8775,
+   "auc_oficial_promedio_particiones": 0.904
+  },
+  "params": {
+   "miembros": "EfficientNetV2-S x5 (v1) + ConvNeXt-Tiny x5 (híbrida) + EfficientNetV2-S x5 (híbrida) + ResNet-34 x5 (híbrida, atención por hallazgo, lado unificado)",
+   "promedio": "media simple",
+   "modelos": 20,
+   "paquete": "envios/v6_cv20_eff_cnxhib_effhib_r34lados_paquete.zip",
+   "evaluacion": "runs/2085024 (híbrida), runs/2085025 (v1)",
+   "ensayo_inferencia": "runs/2085027 (CPU, 8 estudios)"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "envio",
+   "kaggle.enviado": "si",
+   "kaggle.puntuacion_publica": "0.920",
+   "kaggle.fecha": "2026-10-14"
+  }
+ },
+ {
+  "nombre": "resumen-cv5-r34-att-lados-hibrida",
+  "metricas": {
+   "auc_fuera_de_muestra": 0.8585,
+   "auc_fuera_de_muestra_hibrida": 0.8676,
+   "auc_oficial_promedio_particiones": 0.8961
+  },
+  "params": {
+   "referencia": "etiquetas_v1 / híbrida",
+   "evaluacion": "runs/2085024, runs/2085025"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "resumen-cv",
+   "grupo": "cv5-r34-att-lados-hibrida"
+  }
+ },
+ {
+  "nombre": "job-2084986",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-att-lados-hibrida",
+   "kaggle.en_envios": "envio-owen-v6-cv20"
+  }
+ },
+ {
+  "nombre": "job-2085001",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-att-lados-hibrida",
+   "kaggle.en_envios": "envio-owen-v6-cv20"
+  }
+ },
+ {
+  "nombre": "job-2085007",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-att-lados-hibrida",
+   "kaggle.en_envios": "envio-owen-v6-cv20"
+  }
+ },
+ {
+  "nombre": "job-2085014",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-att-lados-hibrida",
+   "kaggle.en_envios": "envio-owen-v6-cv20"
+  }
+ },
+ {
+  "nombre": "job-2084973",
+  "tags": {
+   "autor": "owen",
+   "grupo": "cv5-r34-att-lados-hibrida",
+   "kaggle.en_envios": "envio-owen-v6-cv20"
+  }
+ }
+]
