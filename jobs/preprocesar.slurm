@@ -44,7 +44,8 @@ export OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 MKL_NUM_THREADS=1   # un hilo po
 export OPENCV_FOR_THREADS_NUM=1
 
 # --- Trabajo -----------------------------------------------------------------
-"$PY" rsna/preprocesar.py --out "$OUT" --split "$SPLIT" --workers "${SLURM_CPUS_PER_TASK:?}" --limit "$LIMIT" --size "$SIDE" --series "$NSERIES" --qa 12
+# Opciones extra de preprocesar.py (p. ej. --crop-mm 140 --z-min 0.02 --z-max 0.98) en la variable KNEE_PREPROC_OPTS.
+"$PY" rsna/preprocesar.py --out "$OUT" --split "$SPLIT" --workers "${SLURM_CPUS_PER_TASK:?}" --limit "$LIMIT" --size "$SIDE" --series "$NSERIES" --qa 12 ${KNEE_PREPROC_OPTS:-}
 
 du -sh "$OUT"
 echo "fin=$(date -Is)"

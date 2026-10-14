@@ -47,7 +47,7 @@ def main():
         state = torch.load(path, map_location="cpu")
         model = KneeNet(state["backbone"], None, n_slots=state.get("n_slots", 4), per_label=state.get("per_label", False),
                         context=state.get("context", False), pool=state.get("pool", "media"),
-                        view_gate=state.get("view_gate", False))
+                        view_gate=state.get("view_gate", False), syn_eff=state.get("syn_eff", False))
         model.load_state_dict(state["model"])
         model = model.to(device).to(memory_format=torch.channels_last)
 

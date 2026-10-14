@@ -17,6 +17,26 @@ import torchvision
 LABELS = ["ACL", "MCL", "Medial Meniscus", "Lateral Meniscus", "Medial OA", "Lateral OA", "PF OA",
           "Effusion", "Synovitis", "Baker's", "Contusion", "Fracture"]
 MEAN, STD = (0.485, 0.456, 0.406), (0.229, 0.224, 0.225)
+# Al ver una rodilla en espejo, lo medial pasa a ocupar el sitio de lo lateral: se intercambian
+# menisco medial <-> lateral y artrosis medial <-> lateral. MCL no tiene pareja (no hay etiqueta de LCL).
+SWAP = [0, 1, 3, 2, 5, 4, 6, 7, 8, 9, 10, 11]
+MCL, EFFUSION, SYNOVITIS = 1, 7, 8
+
+
+def mirror_batch(x: torch.Tensor, planes: list[str]) -> torch.Tensor:
+    """Espejo izquierda-derecha coherente de (B, S, D, H, W): en sagital invierte el orden de los
+    cortes; en coronal y axial, las columnas."""
+    return torch.stack([x[:, k].flip(1) if p == "Sagittal" else x[:, k].flip(-1) for k, p in enumerate(planes)], dim=1)
+
+
+def pos_enc(h: int, w: int, device) -> torch.Tensor:
+    """Posición 2D fija de cada celda del mapa: senos y cosenos de (fila, columna) en [-1, 1] a cuatro frecuencias. (h*w, 16)"""
+    yy, xx = torch.meshgrid(torch.linspace(-1, 1, h, device=device), torch.linspace(-1, 1, w, device=device), indexing="ij")
+    feats = []
+    for f in (1, 2, 4, 8):
+        for v in (yy, xx):
+            feats += [torch.sin(f * math.pi / 2 * v), torch.cos(f * math.pi / 2 * v)]
+    return torch.stack(feats, dim=-1).flatten(0, 1)
 
 
 class ViTEncoder(nn.Module):
@@ -60,11 +80,18 @@ def make_encoder(name: str, weights_path: str | None) -> tuple[nn.Module, int]:
 class KneeNet(nn.Module):
     def __init__(self, backbone: str = "resnet34", weights_path: str | None = None,
                  n_slots: int = 4, n_out: int = len(LABELS), dropout: float = 0.3, per_label: bool = False,
-                 context: bool = False, pool: str = "media", view_gate: bool = False):
+                 context: bool = False, pool: str = "media", view_gate: bool = False, syn_eff: bool = False):
         super().__init__()
         self.backbone, self.per_label, self.context, self.pool = backbone, per_label, context, pool
+        self.n_out = n_out
+        # Sinovitis = salida propia + beta * salida de derrame (sin gradiente hacia derrame); beta parte de 0.
+        self.syn_beta = nn.Parameter(torch.zeros(())) if syn_eff else None
         self.encoder, feat = make_encoder(backbone, weights_path)
         self.slot_emb = nn.Parameter(torch.zeros(n_slots, feat))
+        if pool == "espacial":   # cada hallazgo atiende a su propia zona del corte, con posición 2D; parte de la media
+            assert per_label, "--pool espacial requiere --atencion hallazgo"
+            self.sp_norm, self.sp_key, self.sp_pos = nn.LayerNorm(feat), nn.Linear(feat, 128), nn.Linear(16, 128)
+            self.sp_q = nn.Parameter(torch.zeros(n_out, 128))
         if pool == "rejilla":   # media por cuadrantes: conserva de qué lado del corte está cada cosa
             self.grid = nn.Sequential(nn.Linear(4 * feat, feat), nn.GELU())
         # Peso de cada serie propio de cada hallazgo (solo con atención por hallazgo); parte de pesos iguales.
@@ -81,6 +108,14 @@ class KneeNet(nn.Module):
         """x: (B, S, T, 3, H, W) normalizado; present: (B, S) con 1 si la ranura tiene serie."""
         b, s, t = x.shape[:3]
         f = self.encoder(x.flatten(0, 2).contiguous(memory_format=torch.channels_last))
+        if self.pool == "espacial":
+            tok = f.flatten(2).transpose(1, 2).float()                                           # (N, celdas, F)
+            key = torch.tanh(self.sp_key(self.sp_norm(tok)) + self.sp_pos(pos_enc(f.shape[2], f.shape[3], f.device))[None])
+            att = torch.einsum("npk,jk->npj", key.float(), self.sp_q).softmax(dim=1)             # (N, celdas, J)
+            fl = torch.einsum("npj,npc->njc", att, tok).view(b, s, t, self.n_out, -1) + self.slot_emb[None, :, None, None, :]
+            a = self.attn(fl).diagonal(dim1=-2, dim2=-1).softmax(dim=2)                          # (B, S, T, J): cortes por hallazgo
+            z = torch.einsum("bstj,bstjf->bjsf", a, fl) * present[:, None, :, None].to(fl.dtype)
+            return self._per_label_head(z)
         if self.pool == "rejilla":
             f = f.mean(dim=(2, 3)) + self.grid(F.adaptive_avg_pool2d(f, 2).flatten(1).float()).to(f.dtype)
         elif self.pool == "mediamax":
@@ -96,13 +131,23 @@ class KneeNet(nn.Module):
         a = self.attn(f).softmax(dim=2)
         if not self.per_label:
             z = (a * f).sum(dim=2) * present[..., None].to(f.dtype)
-            return self.head(z.flatten(1))
+            return self._syn(self.head(z.flatten(1)))
         # Atención propia de cada hallazgo (idea de Joako): cada uno elige sus cortes; la cabeza se comparte.
         z = torch.einsum("bstj,bstf->bjsf", a, f) * present[:, None, :, None].to(f.dtype)    # (B, J, S, F)
+        return self._per_label_head(z)
+
+    def _per_label_head(self, z: torch.Tensor) -> torch.Tensor:
         if self.view_gate is not None:
             z = z * (self.view_gate.softmax(dim=1) * z.shape[2])[None, :, :, None]
         h = self.head[:-1](z.flatten(2))                                                     # (B, J, 512)
-        return (h * self.head[-1].weight[None]).sum(-1) + self.head[-1].bias
+        return self._syn((h * self.head[-1].weight[None]).sum(-1) + self.head[-1].bias)
+
+    def _syn(self, logits: torch.Tensor) -> torch.Tensor:
+        if self.syn_beta is None:
+            return logits
+        extra = torch.zeros_like(logits)
+        extra[:, SYNOVITIS] = self.syn_beta * logits[:, EFFUSION].detach()
+        return logits + extra
 
 
 def augment(x: torch.Tensor) -> torch.Tensor:

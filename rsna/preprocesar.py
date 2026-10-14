@@ -30,6 +30,8 @@ OUT: Path = Path(".")
 SPLIT = "train"
 SIDE = SIZE
 N_SLOTS = 4
+CROP_MM = 0.0
+Z_RANGE = (0.0, 1.0)
 
 
 def work(task: tuple[str, list[dict]]) -> dict:
@@ -37,7 +39,7 @@ def work(task: tuple[str, list[dict]]) -> dict:
     rec = {"StudyInstanceUID": uid}
     t0 = time.time()
     try:
-        arr, info = build_study(DATA / f"{SPLIT}_series" / uid, series, size=SIDE, slots=slots_for(N_SLOTS))
+        arr, info = build_study(DATA / f"{SPLIT}_series" / uid, series, size=SIDE, slots=slots_for(N_SLOTS), crop_mm=CROP_MM, z_range=Z_RANGE)
         rec.update(info)
         tmp = OUT / f".{uid}.tmp.npy"
         np.save(tmp, arr)
@@ -59,18 +61,24 @@ def contact_sheet(path: Path, dest: Path) -> None:
 
 
 def main():
-    global OUT, SPLIT, SIDE, N_SLOTS
+    global OUT, SPLIT, SIDE, N_SLOTS, CROP_MM, Z_RANGE
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--split", default="train", choices=["train", "test"])
     ap.add_argument("--workers", type=int, default=int(os.environ.get("SLURM_CPUS_PER_TASK", 8)))
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--size", type=int, default=SIZE, help="lado en píxeles del tensor guardado")
+    ap.add_argument("--crop-mm", type=float, default=0.0, help="lado en mm de la caja física centrada que se conserva; 0 = campo de visión completo")
+    ap.add_argument("--z-min", type=float, default=0.0, help="fracción inicial de los cortes que se cubre")
+    ap.add_argument("--z-max", type=float, default=1.0, help="fracción final de los cortes que se cubre")
     ap.add_argument("--series", type=int, default=4, choices=[4, 6], help="ranuras por estudio; 6 añade coronal y axial no sensibles a líquido")
     ap.add_argument("--qa", type=int, default=0, help="número de hojas de contacto PNG a generar")
     args = ap.parse_args()
     OUT, SPLIT, SIDE, N_SLOTS = args.out, args.split, args.size, args.series
     SLOT_NAMES = slot_names(slots_for(N_SLOTS))
+    CROP_MM, Z_RANGE = args.crop_mm, (args.z_min, args.z_max)
+    import json
+    (OUT / "preproc.json").write_text(json.dumps({"size": SIDE, "series": N_SLOTS, "crop_mm": CROP_MM, "z_range": list(Z_RANGE)}))
     OUT.mkdir(parents=True, exist_ok=True)
 
     series = pd.read_csv(DATA / f"{SPLIT}_series.csv", dtype={"StudyInstanceUID": str, "SeriesInstanceUID": str})
@@ -96,6 +104,9 @@ def main():
         old = pd.read_parquet(meta_path)
         meta = pd.concat([old[~old.StudyInstanceUID.isin(meta.StudyInstanceUID)], meta], ignore_index=True) if len(meta) else old
     meta.to_parquet(meta_path, index=False)
+    if "lado" in meta:     # lado de cada rodilla, en el formato que espera entrenar.py --lados
+        meta[["StudyInstanceUID", "lado_declarado", "x_sagital", "lado"]].assign(lado_final=meta.lado).to_parquet(OUT / "lados.parquet", index=False)
+        print(f"lados: {meta.lado.value_counts().to_dict()}; declarados en la cabecera: {int((meta.lado_declarado != '').sum())}", flush=True)
 
     lines = [f"estudios en meta: {len(meta)}; con error: {int(meta['error'].notna().sum()) if 'error' in meta else 0}; "
              f"tiempo de esta ejecución: {(time.time() - t0) / 60:.1f} min"]

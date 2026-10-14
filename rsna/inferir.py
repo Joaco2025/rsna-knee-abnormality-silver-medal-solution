@@ -21,13 +21,16 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from modelo import LABELS, KneeNet, prepare  # noqa: E402
+from modelo import LABELS, MCL, SWAP, KneeNet, mirror_batch, prepare  # noqa: E402
 from preproc import DEPTH, SIZE, build_study, slots_for  # noqa: E402
 
 
 class TestStudies(Dataset):
-    def __init__(self, uids: list[str], series: pd.DataFrame, root: Path, crop: int, n_slots: int = 4):
-        self.uids, self.root, self.crop, self.slots = uids, root, crop, slots_for(n_slots)
+    """Un estudio por elemento: sus tensores en cada variante de preprocesamiento que pidan los modelos
+    (V, ranuras, cortes, lado, lado), qué ranuras tienen serie, si se pudo leer y si es rodilla izquierda."""
+
+    def __init__(self, uids: list[str], series: pd.DataFrame, root: Path, n_slots: int, variants: list[tuple]):
+        self.uids, self.root, self.slots, self.variants = uids, root, slots_for(n_slots), variants
         cols = ["SeriesInstanceUID", "Anatomical_Plane", "Fluid_Sensitive"]
         self.by_study = {u: g[cols].to_dict("records") for u, g in series.groupby("StudyInstanceUID")}
 
@@ -36,16 +39,18 @@ class TestStudies(Dataset):
 
     def __getitem__(self, i: int):
         uid = self.uids[i]
-        ok = 1.0
+        ok, left = 1.0, 0.0
         try:
-            arr, _ = build_study(self.root / uid, self.by_study.get(uid, []), slots=self.slots)
+            outs, info = build_study(self.root / uid, self.by_study.get(uid, []), slots=self.slots, variants=self.variants)
+            arr = np.stack([outs[v] for v in self.variants])
+            left = float(info.get("lado") == "L")
         except Exception:   # estudio ilegible: tensor vacío, se marcará para devolver 0.5
-            arr, ok = np.zeros((len(self.slots), DEPTH, SIZE, SIZE), np.uint8), 0.0
+            arr, ok = np.zeros((len(self.variants), len(self.slots), DEPTH, SIZE, SIZE), np.uint8), 0.0
         x = torch.from_numpy(arr)        # entero: cada modelo recorta el centro a su tamaño
-        present = (x.flatten(1).amax(dim=1) > 0).float()
+        present = (x[0].flatten(1).amax(dim=1) > 0).float()
         if present.sum() == 0:
             ok = 0.0
-        return x, present, torch.tensor(ok)
+        return x, present, torch.tensor(ok), torch.tensor(left)
 
 
 def main():
@@ -72,26 +77,41 @@ def main():
         state = torch.load(path, map_location="cpu")
         model = KneeNet(state["backbone"], None, n_slots=state.get("n_slots", 4), per_label=state.get("per_label", False),
                         context=state.get("context", False), pool=state.get("pool", "media"),
-                        view_gate=state.get("view_gate", False))
+                        view_gate=state.get("view_gate", False), syn_eff=state.get("syn_eff", False))
         model.load_state_dict(state["model"])
-        models.append((model.to(device).eval().to(memory_format=torch.channels_last), state["slices"], state["crop"], state.get("n_slots", 4)))
+        variant = (float(state.get("crop_mm", 0.0)), tuple(state.get("z_range", (0.0, 1.0))))
+        models.append({"net": model.to(device).eval().to(memory_format=torch.channels_last), "slices": state["slices"],
+                       "crop": state["crop"], "slots": state.get("n_slots", 4), "variant": variant,
+                       "mirror_left": state.get("mirror_left", False), "mirror_tta": state.get("mirror_tta", False)})
         print(f"modelo {path.name}: red={state['backbone']} cortes={state['slices']} recorte={state['crop']} "
               f"época={state.get('epoch')} AUC oficial={state.get('auc_oficial', float('nan')):.4f}", flush=True)
-    crop = SIZE
+    variants = sorted({m["variant"] for m in models})
+    print(f"variantes de preprocesamiento: {variants}; modelos en espejo de lado: {sum(m['mirror_left'] for m in models)}; "
+          f"con TTA de espejo: {sum(m['mirror_tta'] for m in models)}", flush=True)
 
-    n_slots = max(m[3] for m in models)     # el tensor de 6 ranuras contiene al de 4 en sus primeras posiciones
-    loader = DataLoader(TestStudies(uids, series, args.data / f"{args.split}_series", crop, n_slots),
+    n_slots = max(m["slots"] for m in models)     # el tensor de 6 ranuras contiene al de 4 en sus primeras posiciones
+    loader = DataLoader(TestStudies(uids, series, args.data / f"{args.split}_series", n_slots, variants),
                         batch_size=args.batch, num_workers=args.workers, pin_memory=amp)
     probs, oks = [], []
     t0 = time.time()
     with torch.no_grad():
-        for i, (x, present, ok) in enumerate(loader, 1):
-            x, present = x.to(device, non_blocking=True), present.to(device)
+        for i, (x, present, ok, left) in enumerate(loader, 1):
+            x, present, left = x.to(device, non_blocking=True), present.to(device), left.to(device) > 0
             acc = torch.zeros(x.shape[0], len(LABELS), device=device)
-            for model, n_slices, c, k in models:
+            for m in models:
+                k, c = m["slots"], m["crop"]
+                planes = [p for p, _ in slots_for(k)]
                 o = (x.shape[-1] - c) // 2
+                xin = x[:, variants.index(m["variant"]), :k, :, o:o + c, o:o + c]
+                if m["mirror_left"]:       # las rodillas izquierdas se llevan a la orientación de las derechas
+                    xin = torch.where(left.view(-1, 1, 1, 1, 1), mirror_batch(xin, planes), xin)
                 with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                    acc += model(prepare(x[:, :k, :, o:o + c, o:o + c], n_slices, train=False), present[:, :k]).float().sigmoid()
+                    p = m["net"](prepare(xin, m["slices"], train=False), present[:, :k]).float().sigmoid()
+                    if m["mirror_tta"]:    # promedio con el estudio en espejo, devolviendo medial y lateral a su sitio
+                        pm = m["net"](prepare(mirror_batch(xin, planes), m["slices"], train=False), present[:, :k]).float().sigmoid()[:, SWAP]
+                        pm[:, MCL] = p[:, MCL]
+                        p = (p + pm) / 2
+                acc += p
             probs.append((acc / len(models)).cpu().numpy())
             oks.append(ok.numpy())
             if i % 50 == 0:
