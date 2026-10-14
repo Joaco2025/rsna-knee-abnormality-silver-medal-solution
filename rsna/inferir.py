@@ -21,8 +21,8 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from modelo import LABELS, MCL, SWAP, KneeNet, mirror_batch, prepare  # noqa: E402
-from preproc import DEPTH, SIZE, build_study, slots_for  # noqa: E402
+from modelo import LABELS, MCL, SWAP, KneeNet, add_zoom, mirror_batch, prepare  # noqa: E402
+from preproc import DEPTH, SIZE, build_study, clahe_volume, slots_for  # noqa: E402
 
 
 class TestStudies(Dataset):
@@ -41,8 +41,9 @@ class TestStudies(Dataset):
         uid = self.uids[i]
         ok, left = 1.0, 0.0
         try:
-            outs, info = build_study(self.root / uid, self.by_study.get(uid, []), slots=self.slots, variants=self.variants)
-            arr = np.stack([outs[v] for v in self.variants])
+            base = sorted({v[:2] for v in self.variants})
+            outs, info = build_study(self.root / uid, self.by_study.get(uid, []), slots=self.slots, variants=base)
+            arr = np.stack([clahe_volume(outs[v[:2]]) if v[2] else outs[v[:2]] for v in self.variants])
             left = float(info.get("lado") == "L")
         except Exception:   # estudio ilegible: tensor vacío, se marcará para devolver 0.5
             arr, ok = np.zeros((len(self.variants), len(self.slots), DEPTH, SIZE, SIZE), np.uint8), 0.0
@@ -80,9 +81,9 @@ def main():
                         view_gate=state.get("view_gate", False), syn_eff=state.get("syn_eff", False),
                         slice_pos=state.get("slice_pos", False))
         model.load_state_dict(state["model"])
-        variant = (float(state.get("crop_mm", 0.0)), tuple(state.get("z_range", (0.0, 1.0))))
+        variant = (float(state.get("crop_mm", 0.0)), tuple(state.get("z_range", (0.0, 1.0))), bool(state.get("clahe", False)))
         models.append({"net": model.to(device).eval().to(memory_format=torch.channels_last), "slices": state["slices"],
-                       "crop": state["crop"], "slots": state.get("n_slots", 4), "variant": variant,
+                       "crop": state["crop"], "slots": state.get("n_slots_datos", state.get("n_slots", 4)), "variant": variant, "zoom": state.get("zoom", False),
                        "mirror_left": state.get("mirror_left", False), "mirror_tta": state.get("mirror_tta", False)})
         print(f"modelo {path.name}: red={state['backbone']} cortes={state['slices']} recorte={state['crop']} "
               f"época={state.get('epoch')} AUC oficial={state.get('auc_oficial', float('nan')):.4f}", flush=True)
@@ -107,9 +108,12 @@ def main():
                 if m["mirror_left"]:       # las rodillas izquierdas se llevan a la orientación de las derechas
                     xin = torch.where(left.view(-1, 1, 1, 1, 1), mirror_batch(xin, planes), xin)
                 with torch.autocast(device.type, dtype=torch.float16, enabled=amp):
-                    z = m["net"](prepare(xin, m["slices"], train=False), present[:, :k]).float()
+                    pr = present[:, :k]
+                    if m["zoom"]:
+                        xin, pr = add_zoom(xin, pr)
+                    z = m["net"](prepare(xin, m["slices"], train=False), pr).float()
                     if m["mirror_tta"]:    # promedio (en logits) con el estudio en espejo, devolviendo medial y lateral a su sitio
-                        zm = m["net"](prepare(mirror_batch(xin, planes), m["slices"], train=False), present[:, :k]).float()[:, SWAP]
+                        zm = m["net"](prepare(mirror_batch(xin, planes + ["Sagittal", "Coronal"] * m["zoom"]), m["slices"], train=False), pr).float()[:, SWAP]
                         zm[:, MCL] = z[:, MCL]     # el MCL solo con la pasada sin espejo
                         z = (z + zm) / 2
                 acc += z.sigmoid()

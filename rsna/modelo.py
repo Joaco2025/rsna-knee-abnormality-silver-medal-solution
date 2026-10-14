@@ -189,6 +189,17 @@ def augment(x: torch.Tensor) -> torch.Tensor:
     return flat.clamp(0, 1).reshape(b, s, t, c, h, w)
 
 
+def add_zoom(x: torch.Tensor, present: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    """Añade dos ranuras: la mitad central (en alto y ancho) de la sagital sensible a líquido y de la
+    coronal, ampliada al tamaño completo. Da más detalle de meniscos y cartílago. x: (B, S, D, H, W) uint8."""
+    h, w = x.shape[-2:]
+    extra = []
+    for k in (0, 2):
+        c = x[:, k, :, h // 4: h // 4 + h // 2, w // 4: w // 4 + w // 2].float()
+        extra.append(F.interpolate(c, size=(h, w), mode="bilinear", align_corners=False).round().clamp(0, 255).to(x.dtype))
+    return torch.cat([x, torch.stack(extra, dim=1)], dim=1), torch.cat([present, present[:, [0, 2]]], dim=1)
+
+
 def drop_slot(x: torch.Tensor, present: torch.Tensor, p: float) -> tuple[torch.Tensor, torch.Tensor]:
     """Con probabilidad p apaga una serie al azar de cada estudio, si le quedan al menos dos."""
     b, s = present.shape

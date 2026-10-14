@@ -31,8 +31,8 @@ from sklearn.metrics import roc_auc_score
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from modelo import LABELS, MCL, SWAP, KneeNet, drop_slot, mirror_batch, prepare  # noqa: E402
-from preproc import slots_for  # noqa: E402
+from modelo import LABELS, MCL, SWAP, KneeNet, add_zoom, drop_slot, mirror_batch, prepare  # noqa: E402
+from preproc import clahe_volume, slots_for  # noqa: E402
 
 
 def mirror(arr: np.ndarray, planes: list[str]) -> np.ndarray:
@@ -47,8 +47,8 @@ def mirror(arr: np.ndarray, planes: list[str]) -> np.ndarray:
 
 class Studies(Dataset):
     def __init__(self, table: pd.DataFrame, data: Path, crop: int, train: bool, left: set[str] | None = None,
-                 mirror_p: float = 0.0):
-        self.left = left or set()
+                 mirror_p: float = 0.0, clahe: bool = False):
+        self.left, self.clahe = left or set(), clahe
         self.mirror_p = mirror_p if train else 0.0     # espejo con intercambio de etiquetas, solo al entrenar
         self.uids = table.StudyInstanceUID.tolist()
         self.t = np.nan_to_num(table[[f"t_{c}" for c in LABELS]].to_numpy(np.float32))
@@ -68,6 +68,8 @@ class Studies(Dataset):
             arr = mirror(np.asarray(arr), [p for p, _ in slots_for(arr.shape[0])])
             t, w = t[SWAP], w[SWAP]
             w[MCL] = 0.0
+        if self.clahe:
+            arr = clahe_volume(np.asarray(arr))
         size = arr.shape[-1]
         if self.train:
             r, c = np.random.randint(0, size - self.crop + 1, 2)
@@ -88,12 +90,14 @@ def macro_auc(y: np.ndarray, p: np.ndarray, w: np.ndarray | None = None) -> tupl
 
 
 @torch.no_grad()
-def predict(model, loader, device, n_slices: int, amp: bool, tta_planes: list[str] | None = None):
+def predict(model, loader, device, n_slices: int, amp: bool, tta_planes: list[str] | None = None, zoom: bool = False):
     """Con tta_planes, promedia con la predicción del estudio en espejo, devolviendo cada salida a su sitio."""
     model.eval()
     ps, ts, ws, ys = [], [], [], []
     for x, present, t, w, y in loader:
         raw, present = x.to(device, non_blocking=True), present.to(device)
+        if zoom:
+            raw, present = add_zoom(raw, present)
         with torch.autocast("cuda", dtype=torch.float16, enabled=amp):
             z = model(prepare(raw, n_slices, train=False), present).float()
             if tta_planes:
@@ -131,6 +135,8 @@ def main():
     ap.add_argument("--espejo", type=float, default=0.0,
                     help="probabilidad de entrenar cada estudio en espejo intercambiando las etiquetas medial y lateral (requiere --lados)")
     ap.add_argument("--tta-espejo", action="store_true", help="al validar, promediar con la predicción en espejo (requiere --lados)")
+    ap.add_argument("--zoom", action="store_true", help="añadir dos ranuras con el centro ampliado de la sagital y la coronal")
+    ap.add_argument("--clahe", action="store_true", help="realce de contraste local (CLAHE) en cada corte")
     ap.add_argument("--posicion", action="store_true", help="sumar a cada corte su posición relativa en la serie")
     ap.add_argument("--sinovitis-derrame", action="store_true", help="sinovitis = salida propia + beta aprendido * salida de derrame")
     ap.add_argument("--vistas", default="comun", choices=["comun", "hallazgo"],
@@ -172,7 +178,7 @@ def main():
     n_slots = int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[0])   # series por estudio
     print(f"entrenamiento={len(train)} validación interna={len(val_int)} validación oficial={len(official)} "
           f"partición={args.fold}/{args.folds} aug={args.aug} quitar_serie={args.quitar_serie} mixup={args.mixup} "
-          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} contexto={args.contexto} pool={args.pool} vistas={args.vistas} lados={'si' if args.lados else 'no'} espejo={args.espejo} tta_espejo={args.tta_espejo} sinovitis_derrame={args.sinovitis_derrame} posicion={args.posicion} peso_hallazgos={args.peso_hallazgos or '-'} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} contexto={args.contexto} pool={args.pool} vistas={args.vistas} lados={'si' if args.lados else 'no'} espejo={args.espejo} tta_espejo={args.tta_espejo} sinovitis_derrame={args.sinovitis_derrame} posicion={args.posicion} zoom={args.zoom} clahe={args.clahe} peso_hallazgos={args.peso_hallazgos or '-'} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
 
     left = None
     if args.lados:
@@ -188,7 +194,7 @@ def main():
         info = json.loads((args.data / "preproc.json").read_text())
 
     def loader(tab, train_mode):
-        return DataLoader(Studies(tab, args.data, args.crop, train_mode, left, args.espejo), batch_size=args.batch, shuffle=train_mode,
+        return DataLoader(Studies(tab, args.data, args.crop, train_mode, left, args.espejo, args.clahe), batch_size=args.batch, shuffle=train_mode,
                           num_workers=args.workers, pin_memory=True, drop_last=train_mode,
                           persistent_workers=args.workers > 0)
 
@@ -199,7 +205,7 @@ def main():
             assert name in LABELS, f"hallazgo desconocido: {name}"
             train[f"w_{name}"] = train[f"w_{name}"] * float(factor)
     dl_train, dl_int, dl_off = loader(train, True), loader(val_int, False), loader(official, False)
-    model = KneeNet(args.backbone, args.weights or None, n_slots=n_slots, per_label=args.atencion == "hallazgo",
+    model = KneeNet(args.backbone, args.weights or None, n_slots=n_slots + 2 * args.zoom, per_label=args.atencion == "hallazgo",
                     context=args.contexto == "gru", pool=args.pool, view_gate=args.vistas == "hallazgo",
                     syn_eff=args.sinovitis_derrame, slice_pos=args.posicion).to(device).to(memory_format=torch.channels_last)
     enc = [p for n, p in model.named_parameters() if n.startswith("encoder.")]
@@ -236,6 +242,8 @@ def main():
         t0, seen, loss_sum = time.time(), 0, 0.0
         for step, (x, present, t, w, _) in enumerate(dl_train, 1):
             raw, present = x.to(device, non_blocking=True), present.to(device)
+            if args.zoom:
+                raw, present = add_zoom(raw, present)
             t, w = t.to(device), w.to(device)
             strong = args.aug == "fuerte" or args.consistencia > 0
             if args.consistencia > 0:   # la versión suave sirve de referencia y no recibe gradiente
@@ -277,9 +285,9 @@ def main():
                 raise SystemExit("la pérdida dejó de ser finita")
         train_s = time.time() - t0
 
-        p_int, t_int, w_int, _ = predict(model, dl_int, device, args.slices, amp, tta)
+        p_int, t_int, w_int, _ = predict(model, dl_int, device, args.slices, amp, tta, args.zoom)
         auc_int, per_int = macro_auc((t_int >= 0.5).astype(int), p_int, w_int)
-        p_off, _, _, y_off = predict(model, dl_off, device, args.slices, amp, tta)
+        p_off, _, _, y_off = predict(model, dl_off, device, args.slices, amp, tta, args.zoom)
         preds_int.append(p_int); preds_off.append(p_off)
         auc_off, per_off = macro_auc(y_off.astype(int), p_off)
         row = {"epoch": epoch, "loss": loss_sum / max(seen, 1), "auc_interna": auc_int, "auc_oficial": auc_off,
@@ -298,7 +306,7 @@ def main():
                 print(f"MLflow: {type(exc).__name__}: {exc}", flush=True)
 
         state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots, "per_label": args.atencion == "hallazgo", "context": args.contexto == "gru", "pool": args.pool, "view_gate": args.vistas == "hallazgo", "mirror_left": bool(args.lados),
-                 "mirror_tta": args.tta_espejo, "syn_eff": args.sinovitis_derrame, "slice_pos": args.posicion,
+                 "mirror_tta": args.tta_espejo, "syn_eff": args.sinovitis_derrame, "slice_pos": args.posicion, "zoom": args.zoom, "clahe": args.clahe, "n_slots_datos": n_slots,
                  "crop_mm": float(info.get("crop_mm", 0.0)), "z_range": list(info.get("z_range", [0.0, 1.0])),
                  "size": int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[-1]),
                  "epoch": epoch, "auc_interna": auc_int, "auc_oficial": auc_off, "labels": LABELS}

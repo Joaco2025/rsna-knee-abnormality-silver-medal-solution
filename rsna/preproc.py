@@ -126,6 +126,19 @@ def read_series(path: str | os.PathLike, plane: str) -> tuple[np.ndarray, tuple[
     return np.ascontiguousarray(vol), (row_mm, col_mm), info
 
 
+def clahe_volume(arr: np.ndarray, clip: float = 2.0, tiles: int = 8) -> np.ndarray:
+    """Realce de contraste local (CLAHE) corte a corte de un tensor uint8 (ranuras, cortes, alto, ancho)."""
+    op = cv2.createCLAHE(clipLimit=clip, tileGridSize=(tiles, tiles))
+    out = np.empty_like(arr)
+    for k in range(arr.shape[0]):
+        if not arr[k].any():
+            out[k] = arr[k]
+            continue
+        for d in range(arr.shape[1]):
+            out[k, d] = op.apply(np.ascontiguousarray(arr[k, d]))
+    return out
+
+
 def _center(vol: np.ndarray, th: int, tw: int) -> np.ndarray:
     """Recorta o rellena con ceros, centrado, hasta (cortes, th, tw)."""
     out = np.zeros((vol.shape[0], th, tw), dtype=vol.dtype)
