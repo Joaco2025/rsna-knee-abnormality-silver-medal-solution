@@ -99,6 +99,9 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--atencion", default="comun", choices=["comun", "hallazgo"],
                     help="hallazgo: cada hallazgo tiene su propia atención sobre los cortes")
+    ap.add_argument("--vistas", default="comun", choices=["comun", "hallazgo"],
+                    help="hallazgo: cada hallazgo aprende cuánto pesa cada serie (requiere --atencion hallazgo)")
+    ap.add_argument("--peso-hallazgos", default="", help='multiplicadores del peso en la pérdida, p. ej. "Lateral OA=3,Synovitis=3"')
     ap.add_argument("--contexto", default="no", choices=["no", "gru"],
                     help="gru: posición del corte y red recurrente entre los cortes de cada serie, antes de la atención")
     ap.add_argument("--pool", default="media", choices=["media", "mediamax"],
@@ -134,16 +137,22 @@ def main():
     n_slots = int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[0])   # series por estudio
     print(f"entrenamiento={len(train)} validación interna={len(val_int)} validación oficial={len(official)} "
           f"partición={args.fold}/{args.folds} aug={args.aug} quitar_serie={args.quitar_serie} mixup={args.mixup} "
-          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} contexto={args.contexto} pool={args.pool} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} contexto={args.contexto} pool={args.pool} vistas={args.vistas} peso_hallazgos={args.peso_hallazgos or '-'} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
 
     def loader(tab, train_mode):
         return DataLoader(Studies(tab, args.data, args.crop, train_mode), batch_size=args.batch, shuffle=train_mode,
                           num_workers=args.workers, pin_memory=True, drop_last=train_mode,
                           persistent_workers=args.workers > 0)
 
+    if args.peso_hallazgos:      # más peso en la pérdida a ciertos hallazgos; las medidas de validación no cambian
+        train = train.copy()
+        for item in args.peso_hallazgos.split(","):
+            name, factor = item.rsplit("=", 1)
+            assert name in LABELS, f"hallazgo desconocido: {name}"
+            train[f"w_{name}"] = train[f"w_{name}"] * float(factor)
     dl_train, dl_int, dl_off = loader(train, True), loader(val_int, False), loader(official, False)
     model = KneeNet(args.backbone, args.weights or None, n_slots=n_slots, per_label=args.atencion == "hallazgo",
-                    context=args.contexto == "gru", pool=args.pool).to(device).to(memory_format=torch.channels_last)
+                    context=args.contexto == "gru", pool=args.pool, view_gate=args.vistas == "hallazgo").to(device).to(memory_format=torch.channels_last)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.wd)
     steps = args.epochs * len(dl_train) // args.acumular
     warm = max(1, len(dl_train) // 2 // args.acumular)
@@ -237,7 +246,7 @@ def main():
             except Exception as exc:
                 print(f"MLflow: {type(exc).__name__}: {exc}", flush=True)
 
-        state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots, "per_label": args.atencion == "hallazgo", "context": args.contexto == "gru", "pool": args.pool,
+        state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots, "per_label": args.atencion == "hallazgo", "context": args.contexto == "gru", "pool": args.pool, "view_gate": args.vistas == "hallazgo",
                  "size": int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[-1]),
                  "epoch": epoch, "auc_interna": auc_int, "auc_oficial": auc_off, "labels": LABELS}
         torch.save(state, args.out / "last.pt")

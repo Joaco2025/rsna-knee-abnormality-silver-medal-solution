@@ -72,7 +72,8 @@ def main():
     for path in args.checkpoints:
         state = torch.load(path, map_location="cpu")
         model = KneeNet(state["backbone"], None, n_slots=state.get("n_slots", 4), per_label=state.get("per_label", False),
-                        context=state.get("context", False), pool=state.get("pool", "media"))
+                        context=state.get("context", False), pool=state.get("pool", "media"),
+                        view_gate=state.get("view_gate", False))
         model.load_state_dict(state["model"])
         models.append((model.to(device).eval().to(memory_format=torch.channels_last), state["slices"], state["crop"], state.get("n_slots", 4)))
         print(f"modelo {path.name}: red={state['backbone']} cortes={state['slices']} recorte={state['crop']} "

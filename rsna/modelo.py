@@ -34,11 +34,13 @@ def make_encoder(name: str, weights_path: str | None) -> tuple[nn.Module, int]:
 class KneeNet(nn.Module):
     def __init__(self, backbone: str = "resnet34", weights_path: str | None = None,
                  n_slots: int = 4, n_out: int = len(LABELS), dropout: float = 0.3, per_label: bool = False,
-                 context: bool = False, pool: str = "media"):
+                 context: bool = False, pool: str = "media", view_gate: bool = False):
         super().__init__()
         self.backbone, self.per_label, self.context, self.pool = backbone, per_label, context, pool
         self.encoder, feat = make_encoder(backbone, weights_path)
         self.slot_emb = nn.Parameter(torch.zeros(n_slots, feat))
+        # Peso de cada serie propio de cada hallazgo (solo con atención por hallazgo); parte de pesos iguales.
+        self.view_gate = nn.Parameter(torch.zeros(n_out, n_slots)) if view_gate and per_label else None
         if context:   # posición del corte dentro de la serie y una red recurrente que comunica los cortes entre sí
             self.slice_emb = nn.Parameter(torch.zeros(1, feat, 32))
             self.rnn = nn.GRU(feat, feat // 2, num_layers=1, batch_first=True, bidirectional=True)
@@ -64,6 +66,8 @@ class KneeNet(nn.Module):
             return self.head(z.flatten(1))
         # Atención propia de cada hallazgo (idea de Joako): cada uno elige sus cortes; la cabeza se comparte.
         z = torch.einsum("bstj,bstf->bjsf", a, f) * present[:, None, :, None].to(f.dtype)    # (B, J, S, F)
+        if self.view_gate is not None:
+            z = z * (self.view_gate.softmax(dim=1) * z.shape[2])[None, :, :, None]
         h = self.head[:-1](z.flatten(2))                                                     # (B, J, 512)
         return (h * self.head[-1].weight[None]).sum(-1) + self.head[-1].bias
 
