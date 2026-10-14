@@ -45,6 +45,8 @@ def main():
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--peso-relleno", type=float, default=0.5, help="peso de las celdas rellenadas; 0 = no rellenar")
     ap.add_argument("--peso-minimo", type=float, default=0.2, help="fracción del peso que conserva una celda claramente discrepante; 1 = no desconfiar")
+    ap.add_argument("--mezcla", type=float, default=0.0,
+                    help="fracción del maestro que se mezcla en los objetivos que sí vienen del informe (destilación); 0 = no tocar")
     ap.add_argument("--rellenar", default="", help="hallazgos que se rellenan, separados por comas; vacío = todos")
     ap.add_argument("--umbral", type=float, default=0.0, help="si es > 0, en vez de la mezcla se marca como sospechosa toda celda con discrepancia mayor que este valor")
     args = ap.parse_args()
@@ -58,7 +60,7 @@ def main():
     print(f"base: {args.labels.name}; maestro: {len(groups)} grupos, época {epoch}; estudios corregidos: {len(uid_int)}; oficiales: {len(uid_off)}")
 
     out = table.copy()
-    rows, checks, gaps = [], [], []
+    rows, checks, gaps, mixes = [], [], [], []
     for c in LABELS:
         t, w = table.loc[uid_int, f"t_{c}"], table.loc[uid_int, f"w_{c}"]
         p = teacher[c]
@@ -80,6 +82,8 @@ def main():
 
         # Relleno de las celdas sin objetivo.
         t_new = t.astype("float64")
+        if args.mezcla > 0:   # destilación: el maestro ordena los casos que el informe deja con el mismo valor
+            t_new[has] = (1 - args.mezcla) * t[has] + args.mezcla * p[has]
         if args.peso_relleno > 0 and (not args.rellenar or c in args.rellenar.split(",")):
             t_new[~has] = p[~has]
             w_new[~has] = args.peso_relleno
@@ -98,6 +102,8 @@ def main():
         wrong = np.abs(t_o[h] - y[h]) > 0.5          # el objetivo del informe cae del lado contrario a la verdad
         flag = s_o > 0.5
         gaps.append(np.stack([np.abs(t_o[h] - p_o[h]), wrong], axis=1))
+        a = args.mezcla or 0.25
+        mixes.append((c, int(h.sum()), auc(y[h], t_o[h]), auc(y[h], (1 - a) * t_o[h] + a * p_o[h]), auc(y[h], 0.5 * t_o[h] + 0.5 * p_o[h]), auc(y[h], p_o[h])))
         checks.append((c, int((~h).sum()), auc(y[~h], p_o[~h]) if (~h).sum() > 1 else float("nan"),
                        int(flag.sum()), int(wrong[flag].sum()), int((~flag).sum()), int(wrong[~flag].sum())))
 
@@ -115,6 +121,13 @@ def main():
     print(f"{'TOTAL':<17}{'':>30}{tot[0]:>12}{tot[1]:>13}{tot[2]:>10}{tot[3]:>13}")
     if tot[0] and tot[2]:
         print(f"objetivos del lado equivocado: {tot[1] / tot[0] * 100:.0f} % entre las sospechosas, {tot[3] / tot[2] * 100:.0f} % entre las demás")
+
+    a = args.mezcla or 0.25
+    print(f"\n-- En los 58 oficiales, celdas con objetivo: AUC contra la verdad del objetivo del informe, de su mezcla con el maestro y del maestro solo")
+    print(f"{'hallazgo':<17}{'celdas':>7}{'informe':>9}{f'mezcla {a:.2f}':>13}{'mezcla 0.50':>13}{'maestro':>9}")
+    for c, n, a0, a1, a2, a3 in mixes:
+        print(f"{c:<17}{n:>7}{a0:>9.3f}{a1:>13.3f}{a2:>13.3f}{a3:>9.3f}")
+    print(f"{'MEDIA':<24}" + "".join(f"{np.nanmean([m[k] for m in mixes]):>{wd}.3f}" for k, wd in ((2, 9), (3, 13), (4, 13), (5, 9))))
 
     gaps = np.concatenate(gaps)
     print("\n-- En los 58 oficiales, según el umbral de discrepancia (todos los hallazgos juntos)")
