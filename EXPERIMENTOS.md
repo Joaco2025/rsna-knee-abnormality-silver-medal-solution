@@ -1,7 +1,7 @@
 # RSNA Knee — qué se ha intentado, dónde está cada cosa y qué queda en cola
 
-Estado al 13 de octubre de 2026, 15:15. Cierre de envíos: 22 de octubre, 23:59 UTC.
-**Mejor puntuación en la tabla pública de Kaggle: 0.912.**
+Estado al 13 de octubre de 2026, 20:00. Cierre de envíos: 22 de octubre, 23:59 UTC.
+**Mejor puntuación en la tabla pública de Kaggle: 0.918.**
 
 Rutas relativas a `/lustre/proyectos/p082/`. El código de este repositorio vive en `code/`.
 
@@ -24,10 +24,13 @@ La validación local ha predicho bien Kaggle: anticipaba +0.012 a +0.014 del ens
 | 13 oct | Trío Base+D v2 | Joako | ResNet-34 (25 %) + ResNet-34 con atención por hallazgo (25 %) + ConvNeXt-Tiny (50 %) | 0.904 | 0.8628 (415) | — |
 | 13 oct | `cuadruple_abcd_corregido` | Joako | Cuádruple A+B+C+D | 0.905 | — | — |
 | 13 oct | **`v3_cv15_r34_eff_cnxhib`** | Owen | 5 particiones de ResNet-34 + 5 de EfficientNetV2-S + 5 de ConvNeXt-Tiny con tabla híbrida, media | **0.912** | 0.8726 | 0.893 |
+| 13 oct | **`v5_cv20_eff_cnxhib_effhib_r34att`** | Owen | 5 particiones de EfficientNetV2-S + 5 de ConvNeXt-Tiny híbrida + 5 de EfficientNetV2-S híbrida + 5 de ResNet-34 híbrida con atención por hallazgo, media | **0.918** | 0.8759 | 0.901 |
 
 Paquetes: `envios/v1_resnet34/`, `envios/v3_cv15_r34_eff_cnxhib/` y su `_paquete.zip`; los de Joako en `code_joako/envios_joako/`; el de Cons en `runs_cons/envio/`. Todos los envíos están anotados en MLflow (corridas `envio-*`).
 
-**Preparado y sin enviar:** `envios/v4_cv20_r34_eff_cnxhib_effhib_paquete.zip` (1.8 GB): los 15 modelos del envío de 0.912 más las 5 particiones de EfficientNetV2-S con tabla híbrida. Fuera de muestra 0.8756 y oficial 0.8985, la mejor combinación medida. Falta su ensayo de inferencia (job 2084790, en cola).
+**Armado y sin enviar:** `envios/v4_cv20_r34_eff_cnxhib_effhib_paquete.zip`: como el v5 pero con el ResNet-34 original en vez del de atención por hallazgo (0.8756 y 0.8985). Lo supera el v5 y no hace falta subirlo.
+
+La validación local ha anticipado las dos mejoras: +0.012/+0.014 local y +0.015 en Kaggle del v3; +0.003/+0.008 local y +0.006 en Kaggle del v5.
 
 ## Etiquetas
 
