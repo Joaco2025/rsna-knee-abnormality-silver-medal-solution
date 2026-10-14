@@ -32,10 +32,22 @@ from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from modelo import LABELS, KneeNet, drop_slot, prepare  # noqa: E402
+from preproc import slots_for  # noqa: E402
+
+
+def mirror(arr: np.ndarray, planes: list[str]) -> np.ndarray:
+    """Espejo izquierda-derecha coherente de un estudio (ranuras, cortes, filas, columnas): convierte una
+    rodilla izquierda en la orientación de una derecha. En sagital se invierte el orden de los cortes;
+    en coronal y axial, las columnas."""
+    out = np.empty_like(arr)
+    for k, plane in enumerate(planes):
+        out[k] = arr[k, ::-1] if plane == "Sagittal" else arr[k, :, :, ::-1]
+    return out
 
 
 class Studies(Dataset):
-    def __init__(self, table: pd.DataFrame, data: Path, crop: int, train: bool):
+    def __init__(self, table: pd.DataFrame, data: Path, crop: int, train: bool, left: set[str] | None = None):
+        self.left = left or set()
         self.uids = table.StudyInstanceUID.tolist()
         self.t = np.nan_to_num(table[[f"t_{c}" for c in LABELS]].to_numpy(np.float32))
         self.w = table[[f"w_{c}" for c in LABELS]].to_numpy(np.float32)
@@ -47,6 +59,8 @@ class Studies(Dataset):
 
     def __getitem__(self, i: int):
         arr = np.load(self.data / f"{self.uids[i]}.npy", mmap_mode="r")
+        if self.uids[i] in self.left:
+            arr = mirror(np.asarray(arr), [p for p, _ in slots_for(arr.shape[0])])
         size = arr.shape[-1]
         if self.train:
             r, c = np.random.randint(0, size - self.crop + 1, 2)
@@ -99,13 +113,15 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--atencion", default="comun", choices=["comun", "hallazgo"],
                     help="hallazgo: cada hallazgo tiene su propia atención sobre los cortes")
+    ap.add_argument("--lados", type=Path, default=None,
+                    help="tabla con el lado de cada estudio (eda/09_lateralidad.py): las rodillas izquierdas se llevan en espejo a la orientación de las derechas")
     ap.add_argument("--vistas", default="comun", choices=["comun", "hallazgo"],
                     help="hallazgo: cada hallazgo aprende cuánto pesa cada serie (requiere --atencion hallazgo)")
     ap.add_argument("--peso-hallazgos", default="", help='multiplicadores del peso en la pérdida, p. ej. "Lateral OA=3,Synovitis=3"')
     ap.add_argument("--contexto", default="no", choices=["no", "gru"],
                     help="gru: posición del corte y red recurrente entre los cortes de cada serie, antes de la atención")
-    ap.add_argument("--pool", default="media", choices=["media", "mediamax"],
-                    help="cómo se resume cada corte: media espacial, o mitad media y mitad máximo")
+    ap.add_argument("--pool", default="media", choices=["media", "mediamax", "rejilla"],
+                    help="cómo se resume cada corte: media espacial; mitad media y mitad máximo; o rejilla de 2x2 que conserva en qué cuadrante está cada cosa")
     ap.add_argument("--aug", default="suave", choices=["suave", "fuerte"],
                     help="fuerte añade giro, escala, desplazamiento, gamma, ruido y borrado por serie")
     ap.add_argument("--quitar-serie", type=float, default=0.0, help="probabilidad de apagar una serie al azar de cada estudio")
@@ -137,10 +153,16 @@ def main():
     n_slots = int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[0])   # series por estudio
     print(f"entrenamiento={len(train)} validación interna={len(val_int)} validación oficial={len(official)} "
           f"partición={args.fold}/{args.folds} aug={args.aug} quitar_serie={args.quitar_serie} mixup={args.mixup} "
-          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} contexto={args.contexto} pool={args.pool} vistas={args.vistas} peso_hallazgos={args.peso_hallazgos or '-'} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+          f"consistencia={args.consistencia} series={n_slots} atencion={args.atencion} contexto={args.contexto} pool={args.pool} vistas={args.vistas} lados={'si' if args.lados else 'no'} peso_hallazgos={args.peso_hallazgos or '-'} acumular={args.acumular} red={args.backbone} cortes={args.slices} recorte={args.crop} lote={args.batch} épocas={args.epochs} amp={amp}", flush=True)
+
+    left = None
+    if args.lados:
+        sides = pd.read_parquet(args.lados)
+        left = set(sides.StudyInstanceUID[sides.lado_final == "L"])
+        print(f"lados: {len(left)} estudios izquierdos se entrenan y validan en espejo", flush=True)
 
     def loader(tab, train_mode):
-        return DataLoader(Studies(tab, args.data, args.crop, train_mode), batch_size=args.batch, shuffle=train_mode,
+        return DataLoader(Studies(tab, args.data, args.crop, train_mode, left), batch_size=args.batch, shuffle=train_mode,
                           num_workers=args.workers, pin_memory=True, drop_last=train_mode,
                           persistent_workers=args.workers > 0)
 
@@ -246,7 +268,7 @@ def main():
             except Exception as exc:
                 print(f"MLflow: {type(exc).__name__}: {exc}", flush=True)
 
-        state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots, "per_label": args.atencion == "hallazgo", "context": args.contexto == "gru", "pool": args.pool, "view_gate": args.vistas == "hallazgo",
+        state = {"model": model.state_dict(), "backbone": args.backbone, "slices": args.slices, "crop": args.crop, "n_slots": n_slots, "per_label": args.atencion == "hallazgo", "context": args.contexto == "gru", "pool": args.pool, "view_gate": args.vistas == "hallazgo", "mirror_left": bool(args.lados),
                  "size": int(np.load(args.data / f"{train.StudyInstanceUID.iloc[0]}.npy", mmap_mode="r").shape[-1]),
                  "epoch": epoch, "auc_interna": auc_int, "auc_oficial": auc_off, "labels": LABELS}
         torch.save(state, args.out / "last.pt")

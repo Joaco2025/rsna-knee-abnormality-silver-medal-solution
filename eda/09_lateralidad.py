@@ -41,8 +41,9 @@ def main():
     # salvo el signo de la normal, la coordenada izquierda-derecha del corte.
     study = pd.DataFrame({"lado": per.reindex(h.StudyInstanceUID.unique())})
     sag = h[h.eje_normal == 0]
-    study["x_sagital"] = sag.groupby("StudyInstanceUID").pos_normal_mm.median()
-    study["x_sagital_min"] = sag.groupby("StudyInstanceUID").pos_normal_mm.min()
+    # En estos datos la normal sagital apunta a la derecha del paciente (las izquierdas salen negativas),
+    # así que se cambia el signo para que +x sea la izquierda, como en el preprocesamiento.
+    study["x_sagital"] = -sag.groupby("StudyInstanceUID").pos_normal_mm.median()
     known = study[study.lado.isin(["R", "L"])]
     print(f"\n-- Posición x del centro (mm; +x = izquierda del paciente) en los {len(known):,} estudios con lado conocido")
     for col in [c for c in study if c.startswith("x_")]:

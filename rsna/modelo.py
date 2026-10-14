@@ -39,6 +39,8 @@ class KneeNet(nn.Module):
         self.backbone, self.per_label, self.context, self.pool = backbone, per_label, context, pool
         self.encoder, feat = make_encoder(backbone, weights_path)
         self.slot_emb = nn.Parameter(torch.zeros(n_slots, feat))
+        if pool == "rejilla":   # media por cuadrantes: conserva de qué lado del corte está cada cosa
+            self.grid = nn.Sequential(nn.Linear(4 * feat, feat), nn.GELU())
         # Peso de cada serie propio de cada hallazgo (solo con atención por hallazgo); parte de pesos iguales.
         self.view_gate = nn.Parameter(torch.zeros(n_out, n_slots)) if view_gate and per_label else None
         if context:   # posición del corte dentro de la serie y una red recurrente que comunica los cortes entre sí
@@ -53,7 +55,12 @@ class KneeNet(nn.Module):
         """x: (B, S, T, 3, H, W) normalizado; present: (B, S) con 1 si la ranura tiene serie."""
         b, s, t = x.shape[:3]
         f = self.encoder(x.flatten(0, 2).contiguous(memory_format=torch.channels_last))
-        f = f.mean(dim=(2, 3)) if self.pool == "media" else 0.5 * (f.mean(dim=(2, 3)) + f.amax(dim=(2, 3)))
+        if self.pool == "rejilla":
+            f = f.mean(dim=(2, 3)) + self.grid(F.adaptive_avg_pool2d(f, 2).flatten(1).float()).to(f.dtype)
+        elif self.pool == "mediamax":
+            f = 0.5 * (f.mean(dim=(2, 3)) + f.amax(dim=(2, 3)))
+        else:
+            f = f.mean(dim=(2, 3))
         f = f.float().view(b, s, t, -1) + self.slot_emb[None, :, None, :]
         if self.context:
             with torch.autocast(device_type=x.device.type, enabled=False):
