@@ -4,7 +4,17 @@
 
 # %% ---------------------------------------------------------------------------------------------
 # Celda 1: nuestra rama, en un subproceso aparte para que libere la memoria de la GPU al terminar.
-import glob, os, shutil, subprocess, sys
+import glob, os, shutil, subprocess, sys, time
+
+# El límite de Kaggle son 9 h para TODO el notebook. Los notebooks públicos pueden gastar hasta ~8.3 h
+# (el de R7 + Raptor tiene ese plazo interno), así que nuestra rama solo corre si queda tiempo y con un
+# tope: si se pasa, se corta y se envía la mezcla pública sin tocar.
+LIMITE_H = 8.7                      # margen bajo las 9 h de Kaggle
+INICIO = globals().get("NB_T0")     # el notebook de R7 + Raptor guarda aquí su hora de inicio
+if INICIO is None:
+    INICIO = time.time() - float(os.environ.get("HORAS_YA_GASTADAS", "0")) * 3600
+QUEDA = LIMITE_H * 3600 - (time.time() - INICIO)
+print(f"tiempo restante para nuestra rama: {QUEDA / 3600:.2f} h")
 
 def buscar(nombre):
     for nivel in range(1, 6):
@@ -32,9 +42,18 @@ subprocess.run(cmd + ["pydicom==3.0.2", "pylibjpeg", "pylibjpeg-libjpeg", "pylib
 
 CKPTS = sorted(glob.glob(f"{YUCA}/pesos/*.pt"))
 print(f"{len(CKPTS)} modelos propios desde {YUCA}; datos en {DATA}")
-subprocess.run([sys.executable, f"{YUCA}/rsna/inferir.py", "--data", DATA, "--split", "test",
-                "--checkpoints", *CKPTS, "--out", "/kaggle/working/yuca_sub.csv",
-                "--batch", "4", "--workers", str(min(4, os.cpu_count() or 2))], check=True)
+YUCA_OK = False
+if QUEDA < 0.5 * 3600:
+    print("no queda tiempo suficiente: se envía la mezcla pública tal cual")
+else:
+    try:
+        subprocess.run([sys.executable, f"{YUCA}/rsna/inferir.py", "--data", DATA, "--split", "test",
+                        "--checkpoints", *CKPTS, "--out", "/kaggle/working/yuca_sub.csv",
+                        "--batch", "4", "--workers", str(min(4, os.cpu_count() or 2))],
+                       check=True, timeout=QUEDA - 600)
+        YUCA_OK = True
+    except Exception as exc:     # tiempo agotado o fallo: la mezcla pública queda como envío
+        print(f"nuestra rama no terminó ({type(exc).__name__}); se envía la mezcla pública tal cual")
 
 # %% ---------------------------------------------------------------------------------------------
 # Celda 2: mezcla por rangos, con un peso de nuestra rama distinto para cada hallazgo.
@@ -51,6 +70,9 @@ PESO_YUCA = {"ACL": 0.18, "Baker's": 0.18, "Medial OA": 0.16, "MCL": 0.15, "Medi
              "Lateral OA": 0.00, "Synovitis": 0.00}
 
 pub = pd.read_csv("/kaggle/working/submission_publica.csv", dtype={"StudyInstanceUID": str})
+if not globals().get("YUCA_OK", False) or not os.path.exists("/kaggle/working/yuca_sub.csv"):
+    pub.to_csv("/kaggle/working/submission.csv", index=False)
+    raise SystemExit("sin rama propia: queda la mezcla pública")
 yuca = pd.read_csv("/kaggle/working/yuca_sub.csv", dtype={"StudyInstanceUID": str})
 yuca = yuca.drop_duplicates("StudyInstanceUID").set_index("StudyInstanceUID").reindex(pub["StudyInstanceUID"]).reset_index()
 
