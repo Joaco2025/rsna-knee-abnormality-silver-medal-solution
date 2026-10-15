@@ -395,6 +395,8 @@ Toda la implementación está en archivos nuevos (`rsna/modelo_att.py`, `entrena
 - **Lección Aprendida**: Owen alcanzó 0.912 no por hiperparámetros esotéricos, sino por diversidad inductiva real (EfficientNetV2-S + ConvNeXt + ResNet) y reducción masiva de varianza vía 5 folds con checkpoints estabilizados en decaimiento coseno.
 - **Siguiente Paso**: Ejecutar Experimento 0A (fusión de coste cero en `val_int`) y preparar Gatekeeper para entrenamiento de `effhib`.
 
+> **Aclaración [2026-10-13 20:19]:** en esta entrada, «15 modelos» describe correctamente el paquete v3 enviado a Kaggle (5 particiones × 3 familias, promedio 1/15). El rótulo erróneo «Owen 15 modelos» aplicado a métricas OOF y de `val_int` está en la entrada de las 13:45 (ver su nota de corrección). Fuente: `experiments/reportes/auditoria_owen_0918.md`, D.3.
+
 ---
 
 ---
@@ -430,6 +432,13 @@ Toda la implementación está en archivos nuevos (`rsna/modelo_att.py`, `entrena
 - **Lección Aprendida**: Inyectar atención por corte y patología (`slice_patho`) y diversidad supervisada (`cnx_hib`) en el ensamble de Owen aporta complementariedad inmediata ($+0.0049$, $P=99.7\%$), convirtiendo la fusión de 17 modelos en nuestro mejor candidato histórico.
 - **Siguiente Paso**: Preservar el ensamble fusión C5 como candidato analítico mientras se entrena el piloto de `effhib`.
 
+> **Corrección [2026-10-13 20:19] — rótulo «Owen 15 modelos»** (el texto original se conserva arriba):
+> - «Owen 15 Modelos OOF = 0.8726» y «Owen 15 Modelos en `val_int` = 0.8630» **no son el ensamble de 15 modelos**. Son la media simple de **3 predicciones OOF por estudio** (una por familia: r34, eff, cnxhib), tomadas de los parquets OOF de `runs/2084709` (`rsna/evaluar_fusion_offline.py:137-139` y `:218-222`).
+> - Los 415 estudios de `val_int` cumplen md5 % 10 = 0, así que caen en la partición 0 de Owen. Las cifras en `val_int` vienen, por tanto, solo de los modelos de la partición 0, que no vieron esos estudios: **sin contaminación**.
+> - Las mezclas «16 modelos (15/16 + 1/16)» y «17 modelos» pesan esa media de 3 familias como si fueran 15 modelos. Los números (0.8644, 0.8655, C5 = 0.8679) siguen siendo válidos como cuentas, pero el rótulo «N modelos» es incorrecto.
+> - C5 en `val_int` no mide el ensamble desplegable: el promedio de las 5 particiones de Owen incluye modelos que sí entrenaron con `val_int` (12 de 15 en v3; 16 de 20 en v5).
+> - Fuente: `experiments/reportes/auditoria_owen_0918.md`, D.2 y D.3.
+
 ---
 
 ### [2026-10-13 14:00] — Experimento 1: Piloto Fold 0 de EfficientNetV2-S Híbrido (`effhib`)
@@ -455,3 +464,96 @@ Toda la implementación está en archivos nuevos (`rsna/modelo_att.py`, `entrena
 
 
 
+
+---
+
+### [2026-10-13 16:10] — Triage: cancelación de `2084782` (effhib fold 0 de Joako) y pesos Torchvision
+- **Estado**: COMPLETED
+- **Job SLURM**: `2084782` CANCELLED por el usuario tras 18m28s de ejecución (confirmación explícita en el turno).
+- **Motivo**: duplicaba `effhib` fold 0 de Owen (`runs/2084674`; Owen reporta OOF 0.8644 para effhib en EXPERIMENTOS.md) y ocupaba 1 de las 4 GPUs del QOS de `p082`.
+- **Descargas**: `swin_v2_t-b137f0e2.pth` (113.9 MB) y `convnext_small-0c510722.pth` (201.0 MB) en `modelos/torch/`, desde download.pytorch.org con TLS verificado; SHA-256 coincide con el prefijo del nombre. No usados todavía.
+- **Lección Aprendida**: Verificar los 5 folds de Owen en `runs/` antes de encolar un piloto evita gastar GPU duplicada.
+
+---
+
+### [2026-10-13 16:20] — Destilación de objetivos v3 + meta-stacking 12x12 sobre OOF (solo CPU, 0 GPU-h)
+- **Estado**: PLANNED
+- **Job SLURM**: pendiente (`jobs/destilar_etiquetas_v3_cpu.slurm`, `jobs/stacking_oof_cpu.slurm`)
+- **Autor / Rama**: joako / `joako`
+- **Hipótesis A (destilación)**: mezclar 30% del maestro OOF en los objetivos observados y rellenar celdas no mencionadas con predicciones OOF de alta certeza reduce el ruido de la pseudoetiqueta. **Prior en contra**: Owen midió que el relleno solo es fiable en Synovitis (AUC 0.77; Baker's 0.32), por lo que el relleno se limita a Synovitis por defecto. Esta fase solo genera la tabla; no mide AUC (se mide al entrenar con ella, sin entrenarse todavía).
+- **Hipótesis B (stacking)**: un meta-modelo regularizado por hallazgo, alimentado con probabilidad/logit/rango de las 12 salidas de 5 familias, explota co-ocurrencias (ACL+contusión+derrame) y supera al promedio simple en OOF. **Prior en contra**: Owen midió LR/GBM/bosque con las 12 salidas = 0.8442/0.8344/0.8403 frente a 0.8462 (`evaluar_apilado.py`) y rangos peor que la media.
+- **Baseline de Referencia**: OOF 4,349 vs tabla v1, `runs/2084813` época 8: promedio r34+eff+cnxhib = 0.8726 (v3, Kaggle 0.912); r34+eff+cnxhib+effhib = 0.8756 (v4).
+- **Criterio de Aceptación**: IC 95% inferior del delta > 0 y P(delta>0) ≥ 95% en bootstrap pareado (500 réplicas) frente a v4; sin caída > 0.015 en ningún hallazgo. Si falla, se descarta sin repetir variantes.
+- **Limitaciones declaradas**: (1) D y ConvNeXt híbrido de Joako solo tienen predicciones en los 415 de `val_int`: no entran en matrices de 4,349. (2) 4 o 5 familias, no 20 modelos: cada estudio solo tiene una predicción OOF por familia. (3) Sesgo estándar de apilado: los OOF de entrenamiento vienen de modelos que vieron la partición de prueba. (4) Con los 58 Gold con w=4 en entrenamiento, `val_oficial` deja de ser descriptivo para esos modelos.
+
+#### Cierre [2026-10-13 16:25] — Destilación v3 + stacking 12x12 (CPU)
+- **Estado**: COMPLETED (stacking: hipótesis B REFUTADA; destilación: tabla generada, sin medir AUC)
+- **Jobs**: `2084839` (destilación, relleno solo Synovitis → 0 celdas rellenadas), `2084841` (diagnóstico `--rellenar all` → 551 celdas, 263 de Baker's casi todas negativas), `2084840` (stacking, 7m12s). Los intentos `2084837/2084838` fallaron en 1-3 s por un assert propio de directorio vacío (corregido).
+- **Resultados stacking** (OOF 4,349, tabla v1, 5 familias, bootstrap pareado 500 réplicas, referencia v4 = 0.8756):
+  - `lr_todas` (12 salidas × 5 familias) 0.8740: Δ −0.0016, IC95 [−0.0031, −0.0002], P(>0)=1.4%
+  - `lr_C01` 0.8673: Δ −0.0083, IC95 [−0.0104, −0.0061]
+  - `ridge_todas` 0.8682: Δ −0.0074, IC95 [−0.0099, −0.0051]
+  - `lr_propia` (control, solo el mismo hallazgo) 0.8766: Δ +0.0010, IC95 [−0.0000, +0.0020], P(>0)=97.2%
+  - Baselines: v3 0.8726, v4 0.8756, promedio 5 familias 0.8759. Contusion y MCL empeoran con las 12 salidas (−0.005 y −0.009).
+- **Veredicto**: las co-ocurrencias entre hallazgos NO ayudan (confirma a Owen: 0.8442 vs 0.8462). El único brazo ≥ baseline es el control sin cruces, con Δ +0.0010 bajo el umbral +0.0020 y IC inferior ≈ 0: no se adopta (sesgo de apilado sin corregir).
+- **Lección Aprendida**: Un meta-modelo con las 12 salidas añade ruido: con 4,349 estudios y 180 características pierde frente al promedio simple; la vía no merece más variantes.
+- **Siguiente Paso**: No seguir con apilado. Decidir si la tabla v3 destilada justifica GPU (fase 2); relleno solo defendible en Synovitis, donde no hay celdas confiables.
+
+---
+
+### [2026-10-13 16:45] — Comparación OOF pareada de los paquetes v3, v4 y v5 de Owen (solo CPU, 0 GPU-h)
+- **Estado**: PLANNED
+- **Job SLURM**: pendiente (`jobs/comparar_paquetes_oof_cpu.slurm`, partición `cpu`, 8 CPUs, 16 GB)
+- **Autor / Rama**: joako / `joako`
+- **Herramienta**: nueva `rsna/comparar_paquetes_oof.py`. Se revisó antes: `evaluar_oof.py` (Owen) da puntos sin bootstrap; `evaluar_fusion_offline.py` es de 415 estudios con rutas fijas; el bootstrap de `stacking_biomecanico_oof.py` es solo macro. Se reutiliza su `macro_auc` por importación.
+- **Hipótesis**: sobre los mismos 4,349 estudios OOF, v4 (= v3 + effhib) supera a v3, y v5 (sin r34, con r34att) no se distingue de v4. Expectativa derivada de los puntos que ya reporta Owen en `runs/2084813/oof.txt` (tabla v1): v3 0.8726, v4 0.8756, v5 0.8759. Es una confirmación con IC, no un hallazgo nuevo.
+- **Baseline de Referencia**: v3 = envío de Kaggle 0.912 (OOF 0.8726).
+- **Procedimiento**: tabla v1 original (t_, w_), y = t >= 0.5, AUC por hallazgo con w > 0; promedio simple de familias (una predicción OOF por familia y estudio); bootstrap pareado a nivel de estudio, 1,000 réplicas, semilla 20261013, mismos índices para todo. Verificación de OOF: 25 corridas contra su `predicciones.npz` (partición md5 exacta, disjuntas, cobertura 4,349, parquet == última época) y contraste de los jobs de MANIFIESTO.txt con los grupos del OOF.
+- **Criterio de Aceptación (fijado antes de ver resultados)**: una diferencia es concluyente si IC95 inferior > 0 y P(Δ>0) ≥ 95%. Para recomendar un candidato como prueba en Kaggle además Δ ≥ +0.0020 frente a v3 y ningún hallazgo con caída puntual > 0.015. Si v5 vs v4 no cumple, se declara inconcluso (sin elegir por AUC más alto).
+- **Limitaciones declaradas**: (1) OOF usa 1 modelo por familia y estudio; en Kaggle se promedian 5 por familia, así que el OOF no replica la reducción de varianza del test. (2) Solo tres paquetes y tres pares: multiplicidad pequeña pero real; 12 hallazgos adicionales son exploratorios. (3) La relación OOF→Kaggle tiene un único punto de calibración (2→15 modelos: +0.012–0.014 anticipado, +0.015 observado). (4) Los paquetes están ordenados por OOF, no son independientes de la selección que hizo Owen de qué familias incluir.
+- **Estado de Kaggle**: se consultan los registros disponibles (EXPERIMENTOS.md, registros JSON y corridas `envio` de `mlflow.db` en modo solo lectura); no se toca la cuenta.
+
+#### Cierre [2026-10-13 16:40] — Comparación OOF v3/v4/v5
+- **Estado**: COMPLETED. **Job** `2084846` (CPU, 1m, ExitCode 0:0, `.err` vacío). Salida: `runs_joako/2084846/comparacion_paquetes_oof.json`.
+- **Verificaciones**: jobs de MANIFIESTO.txt == grupos del OOF; 25 corridas con partición md5 exacta, disjuntas, cobertura 4,349, parquet == última época (diferencia máxima 0.0). 42,637 celdas válidas (tabla v1). Puntos reproducen a Owen: v3 0.8726, v4 0.8756, v5 0.8759.
+- **Resultados** (OOF 4,349, bootstrap pareado 1,000 réplicas, semilla 20261013):
+  - v4 vs v3: Δ +0.0030, IC95 [+0.0021, +0.0039], P=100% → cumple criterio y umbral +0.002.
+  - v5 vs v3: Δ +0.0032, IC95 [+0.0019, +0.0045], P=100% → cumple criterio; el IC inferior queda justo bajo 0.002.
+  - v5 vs v4: Δ +0.0003, IC95 [−0.0005, +0.0011], P=74.1% → INCONCLUSO.
+  - Peor hallazgo: Synovitis (solo 1,206 celdas válidas) −0.0053 (v4 vs v3) y −0.0115 (v5 vs v3); dentro del límite −0.015.
+- **Kaggle**: `mlflow.db` de Owen (solo lectura) registra 5 envíos (0.897, 0.898, 0.912, 0.905, 0.904); no hay corrida para v4 ni v5. EXPERIMENTOS.md (15:09) dice v4 preparado y sin enviar. El ensayo de inferencia de v4 (2084790, 160 estudios, 1.04 s/estudio) terminó bien; el de v5 (2084831) solo cubrió 6 estudios en CPU.
+- **Lección Aprendida**: effhib aporta una mejora OOF pequeña pero estadísticamente sólida (+0.003); sustituir r34 por r34att no se distingue de v4.
+
+> **Corrección [2026-10-13 20:19] — línea «Kaggle» de este cierre** (el texto original se conserva arriba; era cierto a las 16:40): a las **19:56** Owen registró el envío v5 con **0.918** en Kaggle. El job 2084935 (`rsna-registrar-lote`) creó la corrida de MLflow `envio-owen-v5-cv20` («creada; 4 metricas, 6 tags», según `code/logs/rsna-registrar-lote_2084935.out`), con la entrada `code/registros/2026-10-13_envio_v5.json` y el commit `1883220`. v4 sigue sin enviar y sin corrida (`code/EXPERIMENTOS.md:31`). En esta corrección no se leyó `mlflow.db`: la existencia de la corrida sale del log del job. El 0.918 no se verificó en Kaggle. Fuente: `experiments/reportes/auditoria_owen_0918.md`, A.
+
+---
+
+### [2026-10-13 20:05] — Auditoría de solo lectura: entrega 0.918 de Owen (v5)
+- **Estado**: COMPLETED
+- **Job SLURM**: N/A (auditoría de solo lectura; una consulta sacct; sin jobs)
+- **Autor / Rama**: joako / `joako`
+- **Commit Git**: `8b21ebb` + cambios sin versionar (informe en `experiments/reportes/auditoria_owen_0918.md`)
+- **Hipótesis**: el 0.918 corresponde a un paquete existente en `envios/` y podría coincidir con nuestro v4 (v3 + effhib).
+- **Resultados Observados**:
+  - Entrega = `envios/v5_cv20_eff_cnxhib_effhib_r34att` (20 modelos: eff, cnxhib, effhib y r34att ×5; `last.pt` época 8; media simple; sin TTA ni calibración). Evidencia: `code/registros/2026-10-13_envio_v5.json`, `EXPERIMENTOS.md:27`, commit `1883220` y MLflow vía job 2084935 (19:56). Kaggle no verificado (sin red).
+  - No es v4: v5 cambia r34 (v1) por r34att (híbrida, atención por hallazgo); comparten 15/20 modelos.
+  - OOF 4,349 (tabla v1, job 2084846): v5 vs v4 Δ +0.0003, IC95 [−0.0005, +0.0011], P = 74.1 % (inconcluso); v5 vs v3 Δ +0.0032, IC95 [+0.0019, +0.0045].
+  - Gold fuera del entrenamiento; los 415 de `val_int` caen en la partición 0 de Owen (md5 % 10 = 0): 16/20 miembros de v5 entrenaron con ellos.
+- **Lección Aprendida**: v5 ya incorpora la atención por hallazgo en 5 particiones; v4 es redundante y cualquier aporte nuestro debe medirse contra v5 con OOF o con los miembros de la partición 0.
+- **Siguiente Paso**: actualizar la referencia a v5 (0.918 / OOF 0.8759); rótulo «Owen 15 modelos» corregido con nota fechada en la entrada 13:45 (aclaración en 13:30, donde no había error) y línea «Kaggle» del cierre 16:40 corregida; no enviar v4. Parche de contexto propuesto en `backups/contexto_v5.patch` (lo aplica jcastro).
+
+---
+
+### [2026-10-14 20:20] — Piloto CoAtNet, receta #53 del hilo 746792 sin OAI, partición 0
+- **Estado**: PLANNED
+- **Job SLURM**: pendiente (`jobs/entrenar_coatnet_piloto.slurm`; 1 MI210, 16 CPUs, 64 GB, 12 h; `--test-only` estima inicio 2026-10-15 01:57 por la cuota de GPU de p082)
+- **Autor / Rama**: joako / `joako`
+- **Commit Git**: pendiente (se anota al lanzar)
+- **Hipótesis**: un único CoAtNet (`coatnet_rmlp_2_rw_384`) con atención MIL por hallazgo sobre 96 cortes nativos a 384 px, entrenado con etiquetas blendjev, supera en OOF a nuestra mejor familia individual (effhib, EfficientNetV2-S 2.5D sobre 4×16 cortes a 288). Sustento: en el #53 esa receta sin OAI dio 0.940-0.942 público, frente a 0.918 de nuestro ensamble de 20 modelos.
+- **Modificación**: no es una variable aislada. Cambian a la vez backbone, corpus (native384 de 140 mm), cabeza, etiquetas (blendjev) y receta de optimización. Es una prueba de receta completa frente a la mejor familia, no un ablado.
+- **Configuración / Comando**: receta completa y origen de cada parámetro en `experiments/reportes/receta_coatnet.md`. Etiquetas en `runs_joako/etiquetas_coatnet_20261014/` (blendjev sha256 `5347cc5bbbe8…`). Pesos timm locales sha256 `91570c7af10f…`. Fold 0 = md5 % 5 sobre los 4,349: 3,458 de entrenamiento, 891 OOF y 58 Gold. 16 épocas × 216 pasos; fp16 + GradScaler; corpus en `/scratch`, borrado al salir.
+- **Baseline de Referencia**: effhib, partición 0, OOF con juez v1 = **0.8628** (mismos 891 estudios; el 0.8644 es sobre las 5 particiones).
+- **Criterio de Aceptación (fijado antes de lanzar)**: pasa si el OOF del fold 0 con juez v1 del checkpoint SWA (top-3 épocas por Gold, promedio uniforme) es ≥ **0.8678** (Δ ≥ +0.005 sobre effhib) y no hay NaN ni divergencia en fp16 (definiciones en el reporte). Además, al menos una época debe tener < 5 % de pasos saltados por GradScaler; si ninguna lo cumple, NO PASA aunque el AUC supere el umbral (se registran % saltado y escala por época). Se reportan también la última época, el bootstrap pareado (1,000 réplicas) y los jueces blend y blendjev. El Gold se reporta por época y no decide.
+- **Limitaciones declaradas**: (1) El juez v1 solo tiene 269 celdas de Synovitis y 497 de Baker's en el fold 0. (2) El AUC Gold del SWA está sesgado al alza porque las épocas se eligen con Gold, y JEV y v1 se ajustaron sobre esos 58 (`lessons.md` §1.2). (3) Una sola semilla y un solo fold; no mide varianza. (4) Entrena con el 80 % de los datos, a diferencia del all-data del #53.
+- **Duración / Recursos estimados**: 6.5-8 h de GPU (≈20-26 min por época con evaluación), corpus ~10 min.
+- **Siguiente Paso**: según el criterio, decidir all-data y semillas (jcastro).

@@ -6,6 +6,8 @@ data/
 runs/
 preproc/
 _to_delete/
+# Notebooks, foro y pesos de terceros descargados por jcastro: solo consulta local, no van al repo.
+referencias/rsna_research/
 *.dcm
 *.nii
 *.nii.gz
@@ -45,6 +47,9 @@ lightning_logs/
 # ---------- Paquetes de envío y dependencias locales ----------
 envios*/
 *.whl
+
+# ---------- Respaldos y parches locales de configuración ----------
+backups/
 
 # ---------- Logs (SLURM y otros) ----------
 logs/
