@@ -1,0 +1,42 @@
+[
+ {
+  "nombre": "envio-owen-v7-cv25",
+  "metricas": {
+   "kaggle_publica": 0.923,
+   "auc_fuera_de_muestra_hibrida": 0.8905,
+   "auc_fuera_de_muestra": 0.8797,
+   "auc_oficial_promedio_particiones": 0.9088
+  },
+  "params": {
+   "miembros": "ResNet-34 lados x5 + ResNet-34 lados destilación 0.25 x5 + EfficientNetV2-S híbrida x5 + EfficientNetV2-S lados x5 + ConvNeXt-Tiny híbrida x5",
+   "promedio": "media simple",
+   "modelos": 25,
+   "paquete": "envios/v7_cv25_r34lados_r34destil_effhib_efflados_cnxhib_paquete.zip",
+   "evaluacion": "runs/2085184 (híbrida), runs/2085185 (v1)",
+   "ensayo_inferencia": "runs/2085197 (CPU)"
+  },
+  "tags": {
+   "autor": "owen",
+   "tipo": "envio",
+   "kaggle.enviado": "si",
+   "kaggle.puntuacion_publica": "0.923",
+   "kaggle.fecha": "2026-10-14"
+  }
+ },
+ {
+  "nombre": "envio-joako-0957-oneclick",
+  "metricas": {
+   "kaggle_publica": 0.956
+  },
+  "params": {
+   "miembros": "notebook público R7 ConvNeXt-small + Raptor CoAtNet (mezcla de rangos 0.5/0.5), sin cambios"
+  },
+  "tags": {
+   "autor": "jcastro",
+   "tipo": "envio",
+   "kaggle.enviado": "si",
+   "kaggle.puntuacion_publica": "0.956",
+   "kaggle.fecha": "2026-10-14"
+  }
+ }
+]
