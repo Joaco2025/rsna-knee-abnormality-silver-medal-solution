@@ -1,0 +1,55 @@
+{
+ "notebook": "referencias/0-957-latest-dataset-score-in-one-click.ipynb",
+ "celda": 4,
+ "fuentes": {
+  "px_cache.py": {
+   "bytes": 20263,
+   "lineas": 360,
+   "sha256": "b13e38a7ad3bd496f8027e02209653e224b0926db4f0853eeb0d076a2d6e2632",
+   "sha256_notebook": "b13e38a7ad3bd496f8027e02209653e224b0926db4f0853eeb0d076a2d6e2632",
+   "coincide": true
+  },
+  "compact_train.py": {
+   "bytes": 230308,
+   "lineas": 3073,
+   "sha256": "04df7e2e154b2c2521696908f272940c63ce17e9b6337b85847fee64504eeaba",
+   "sha256_notebook": "04df7e2e154b2c2521696908f272940c63ce17e9b6337b85847fee64504eeaba",
+   "coincide": true
+  },
+  "compact_infer.py": {
+   "bytes": 84290,
+   "lineas": 1300,
+   "sha256": "8401812cd63737ec99839d317c4037c4efb445d1baec892fa7481bb30399cc2d",
+   "sha256_notebook": "8401812cd63737ec99839d317c4037c4efb445d1baec892fa7481bb30399cc2d",
+   "coincide": true
+  },
+  "probe_infer.py": {
+   "bytes": 16584,
+   "lineas": 333,
+   "sha256": "a6cc31448019c84be5868d0a2ff1d99719b23b0f86110efc03efff3ce6bd6980",
+   "sha256_notebook": "a6cc31448019c84be5868d0a2ff1d99719b23b0f86110efc03efff3ce6bd6980",
+   "coincide": true
+  },
+  "probe_dual.py": {
+   "bytes": 8490,
+   "lineas": 165,
+   "sha256": "a6155eb08701f9bb746f838bc8ef8e2129c85f76a5c58e379692ffe2e76bbef0",
+   "sha256_notebook": "a6155eb08701f9bb746f838bc8ef8e2129c85f76a5c58e379692ffe2e76bbef0",
+   "coincide": true
+  },
+  "knee_anchor_bank_v2.py": {
+   "bytes": 14529,
+   "lineas": 280,
+   "sha256": "e564807a129dfcd3c984348917436ee6083066a4d685340587ebd1d3ea14f309",
+   "sha256_notebook": "e564807a129dfcd3c984348917436ee6083066a4d685340587ebd1d3ea14f309",
+   "coincide": true
+  },
+  "side_common.py": {
+   "bytes": 1571,
+   "lineas": 36,
+   "sha256": "bbcc5d027834e6a6fd48c4a8cf228e25661b7522c792587c840fe4d7cd5c0566",
+   "sha256_notebook": "bbcc5d027834e6a6fd48c4a8cf228e25661b7522c792587c840fe4d7cd5c0566",
+   "coincide": true
+  }
+ }
+}

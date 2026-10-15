@@ -53,26 +53,31 @@ EFFHIB_OOF = P / "runs/2084813/oof_effhib.parquet"
 
 
 # ------------------------------- datos -------------------------------------------------------------
-def centros(n: int, k: int, train: bool) -> list[int]:
-    """Centros de ventana como `StudyWindows._centers` del notebook, con todos los cortes válidos."""
-    lo, hi = 0, n - 1
+def centros(n: int, k: int, train: bool, lo: int = 0, hi: int | None = None) -> list[int]:
+    """Centros de ventana como `StudyWindows._centers` del notebook. Sin máscara, todos los cortes son válidos;
+    con máscara (corpus dd44), [lo, hi] es el rango de cortes válidos, huecos interiores incluidos."""
+    hi = n - 1 if hi is None else hi
     cs = [c for c in range(lo + 1, hi) if c - 1 >= lo and c + 1 <= hi]
     if not cs:
         cs = [max(1, min((lo + hi) // 2, n - 2))]
     if train:
         pool = cs * (k // len(cs) + 1)
         random.shuffle(pool)
-        return pool[:k]
+        return [max(1, min(c, n - 2)) for c in pool[:k]]
     idx = np.linspace(0, len(cs) - 1, k).round().astype(int)
-    return [cs[i] for i in idx]
+    return [max(1, min(cs[i], n - 2)) for i in idx]
 
 
 class Ventanas(Dataset):
-    """Un estudio -> (ventanas uint8 (K, 3, H, W), ganancia, t (12), w (12)). Normaliza la GPU."""
+    """Un estudio -> (ventanas uint8 (K, 3, H, W), ganancia, t (12), w (12)). Normaliza la GPU.
 
-    def __init__(self, uids, corpus: Path, t: dict, w: dict, k: int, train: bool, jitter: float):
+    Corpus "dd44" (rsna/dd44_corpus.py): volumen (44, 336, 336) con ranuras vacías a cero y masks/<uid>.npy;
+    los centros salen del rango [min, max] de la máscara, como `StudyWindows` de dreaddevelopment."""
+
+    def __init__(self, uids, corpus: Path, t: dict, w: dict, k: int, train: bool, jitter: float,
+                 mascara: bool = False):
         self.uids, self.corpus, self.t, self.w = list(uids), corpus, t, w
-        self.k, self.train, self.jitter = k, train, jitter
+        self.k, self.train, self.jitter, self.mascara = k, train, jitter, mascara
 
     def __len__(self):
         return len(self.uids)
@@ -80,7 +85,14 @@ class Ventanas(Dataset):
     def __getitem__(self, i):
         uid = self.uids[i]
         vol = np.load(self.corpus / "vols" / f"{uid}.npy", mmap_mode="r")
-        cs = centros(int(vol.shape[0]), self.k, self.train)
+        n = int(vol.shape[0])
+        if self.mascara:
+            valid = np.where(np.load(self.corpus / "masks" / f"{uid}.npy") > 0)[0]
+            if len(valid) < 3:
+                valid = np.arange(min(3, n))
+            cs = centros(n, self.k, self.train, int(valid.min()), int(valid.max()))
+        else:
+            cs = centros(n, self.k, self.train)
         x = np.stack([np.stack([vol[c - 1], vol[c], vol[c + 1]], 0) for c in cs], 0)
         g = 1.0 + (random.random() - 0.5) * 2 * self.jitter if self.train else 1.0
         return (torch.from_numpy(np.ascontiguousarray(x)), torch.tensor(g, dtype=torch.float32),
@@ -93,13 +105,25 @@ def un_estudio(batch):
     return x, g, t[None], w[None]
 
 
+def varios_estudios(batch):
+    """Micro-lote de B estudios: (B, K, 3, H, W), (B,), (B, 12), (B, 12)."""
+    return tuple(torch.stack([b[j] for b in batch]) for j in range(4))
+
+
 def preparar(x: torch.Tensor, g: torch.Tensor, device) -> torch.Tensor:
-    """uint8 (K,3,H,W) -> float normalizada, con la ganancia aplicada en [0, 1] como el notebook."""
+    """uint8 (K,3,H,W) o (B,K,3,H,W) -> float normalizada (B, K, 3, RES, RES), con la ganancia aplicada en
+    [0, 1] como el notebook. Si el corpus no está a RES (dd44: 336 px), reescala bilineal antes de la ganancia,
+    como `StudyWindows._resize` de dreaddevelopment."""
     x = x.to(device, non_blocking=True).float() / 255.0
-    x = (x * g.to(device)).clamp(0, 1)
-    mean = torch.tensor(MEAN, device=device).view(1, 3, 1, 1)
-    std = torch.tensor(STD, device=device).view(1, 3, 1, 1)
-    return ((x - mean) / std)[None]                  # (1, K, 3, H, W)
+    if x.dim() == 4:
+        x, g = x[None], g.reshape(1)
+    B, K = x.shape[:2]
+    if x.shape[-1] != RES or x.shape[-2] != RES:
+        x = F.interpolate(x.flatten(0, 1), size=(RES, RES), mode="bilinear", align_corners=False).view(B, K, 3, RES, RES)
+    x = (x * g.to(device).view(B, 1, 1, 1, 1)).clamp(0, 1)
+    mean = torch.tensor(MEAN, device=device).view(1, 1, 3, 1, 1)
+    std = torch.tensor(STD, device=device).view(1, 1, 3, 1, 1)
+    return (x - mean) / std                          # (B, K, 3, RES, RES)
 
 
 # ------------------------------- modelo (copiado tal cual) -------------------------------------------
@@ -203,6 +227,11 @@ def main():
     ap.add_argument("--k", type=int, default=12)
     ap.add_argument("--k-eval", type=int, default=24)
     ap.add_argument("--accum", type=int, default=16)
+    ap.add_argument("--micro-bs", type=int, default=1,
+                    help="estudios por micro-lote (BatchNorm ve micro_bs × k ventanas); lote efectivo = micro_bs × accum")
+    ap.add_argument("--grad-ckpt", action="store_true", help="gradient checkpointing del backbone (memoria)")
+    ap.add_argument("--corpus-tipo", choices=["native384", "dd44"], default="native384")
+    ap.add_argument("--pesos-fp16", action="store_true", help="guarda last/swa en fp16 (sin optimizador)")
     ap.add_argument("--bb-lr", type=float, default=4.01e-5)
     ap.add_argument("--head-lr", type=float, default=1.95e-3)
     ap.add_argument("--wd", type=float, default=0.0588)
@@ -263,7 +292,7 @@ def main():
     pw_np = np.clip((1 - prev_c) / prev_c, 1, 10)
     pw = torch.tensor(pw_np, dtype=torch.float32, device=device)
 
-    steps_ep = len(train) // a.accum                 # como el #53: 4,349 // 16 = 271 → 4,336 pasos en 16 épocas
+    steps_ep = len(train) // (a.micro_bs * a.accum)  # como el #53: 4,349 // 16 = 271 → 4,336 pasos en 16 épocas
     total_steps = steps_ep * a.epochs
     cfg = {k: str(v) if isinstance(v, Path) else v for k, v in vars(a).items()}
     cfg.update({"n_train": len(train), "n_oof": len(oof), "n_gold": len(gold), "excluidos": excluidos,
@@ -275,8 +304,10 @@ def main():
     print(json.dumps(cfg, ensure_ascii=False), flush=True)
 
     def loader(uids, k, train_mode):
-        return DataLoader(Ventanas(uids, a.corpus, t_, w_, k, train_mode, a.jitter), batch_size=1,
-                          shuffle=train_mode, num_workers=a.workers, collate_fn=un_estudio, pin_memory=True,
+        mb = a.micro_bs if train_mode else 1
+        return DataLoader(Ventanas(uids, a.corpus, t_, w_, k, train_mode, a.jitter, a.corpus_tipo == "dd44"),
+                          batch_size=mb, shuffle=train_mode, num_workers=a.workers,
+                          collate_fn=un_estudio if mb == 1 else varios_estudios, drop_last=mb > 1, pin_memory=True,
                           persistent_workers=a.workers > 0, prefetch_factor=4 if a.workers > 0 else None)
     dl_train = loader(train, a.k, True)
     dl_oof, dl_gold = loader(oof, a.k_eval, False), loader(gold, a.k_eval, False)
@@ -285,6 +316,8 @@ def main():
 
     # ---- modelo y optimizador ----
     model = construir_modelo(a.weights).to(device)
+    if a.grad_ckpt:
+        model.backbone.set_grad_checkpointing(True)
     n_fused = sum(bool(getattr(m, "fused_attn", False)) for m in model.modules())
     print(f"backbone {ARCH} F={model.clsW.shape[1]} | atenciones fusionadas: {n_fused}", flush=True)
     head_p = [p for n, p in model.named_parameters() if not n.startswith("backbone.")]
@@ -368,10 +401,10 @@ def main():
                     print(f"  ép {ep} paso {paso}/{steps_ep} pérdida {loss_sum / max(n_seen, 1):.4f} "
                           f"lr_bb {sched.get_last_lr()[0]:.2e} lr_cab {sched.get_last_lr()[1]:.2e} "
                           f"escala {scaler.get_scale():.0f} |g| {float(gn):.2f} "
-                          f"{n_seen / (time.time() - t0):.2f} estudios/s", flush=True)
+                          f"{n_seen * a.micro_bs / (time.time() - t0):.2f} estudios/s", flush=True)
         seg = time.time() - t0
         met = evaluar(f"ep{ep}")
-        h = {"epoca": ep, "perdida": loss_sum / max(n_seen, 1), "estudios": n_seen, "pasos": steps_ep,
+        h = {"epoca": ep, "perdida": loss_sum / max(n_seen, 1), "estudios": n_seen * a.micro_bs, "pasos": steps_ep,
              "pasos_saltados_gradscaler": skipped,
              "pct_saltados_gradscaler": round(100 * skipped / max(steps_ep, 1), 2),
              "logits_no_finitos": n_nonfinite,
@@ -408,12 +441,16 @@ def main():
             print(abortado, flush=True)
             break
 
-    meta = {"arch": ARCH, "res": RES, "lab": LAB, "norm": "imagenet", "corpus": "native384dense-v10",
+    meta = {"arch": ARCH, "res": RES, "lab": LAB, "norm": "imagenet",
+            "corpus": "native384dense-v10" if a.corpus_tipo == "native384" else "dd44",
             "fold": a.fold, "folds": a.folds}
     resumen = {"config": cfg, "abortado": abortado, "epocas_hechas": len(hist)}
     if hist:
         last_sd = {k: v.detach().cpu() for k, v in model.state_dict().items()}
-        torch.save({"model": last_sd, **meta, "epoch": hist[-1]["epoca"]}, a.out / "last.pt")
+        if a.pesos_fp16:
+            last_sd = {k: v.half() if v.is_floating_point() else v for k, v in last_sd.items()}
+        torch.save({"model": last_sd, **meta, "epoch": hist[-1]["epoca"]},
+                   a.out / ("last_fp16.pt" if a.pesos_fp16 else "last.pt"))
         resumen["ultima"] = {"epoca": hist[-1]["epoca"], **{k: v for k, v in hist[-1]["metricas"].items()
                                                             if not k.endswith("por_hallazgo")}}
     if len(topk) > 1:
@@ -422,7 +459,9 @@ def main():
                if sds[0][k].is_floating_point() else sds[0][k].clone() for k in sds[0]}
         model.load_state_dict(avg)
         met = evaluar("swa")
-        torch.save({"model": avg, **meta, "swa_over": [x["epoca"] for x in topk]}, a.out / "swa.pt")
+        avg_g = {k: v.half() if v.is_floating_point() else v for k, v in avg.items()} if a.pesos_fp16 else avg
+        torch.save({"model": avg_g, **meta, "swa_over": [x["epoca"] for x in topk]},
+                   a.out / ("swa_fp16.pt" if a.pesos_fp16 else "swa.pt"))
         resumen["swa"] = {"epocas": [x["epoca"] for x in topk], **{k: v for k, v in met.items()
                                                                   if not k.endswith("por_hallazgo")}}
         resumen["swa_por_hallazgo"] = {k: v for k, v in met.items() if k.endswith("por_hallazgo")}

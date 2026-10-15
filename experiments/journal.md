@@ -545,10 +545,10 @@ Toda la implementación está en archivos nuevos (`rsna/modelo_att.py`, `entrena
 ---
 
 ### [2026-10-14 20:20] — Piloto CoAtNet, receta #53 del hilo 746792 sin OAI, partición 0
-- **Estado**: PLANNED
-- **Job SLURM**: pendiente (`jobs/entrenar_coatnet_piloto.slurm`; 1 MI210, 16 CPUs, 64 GB, 12 h; `--test-only` estima inicio 2026-10-15 01:57 por la cuota de GPU de p082)
+- **Estado**: PLANNED → enviado 2026-10-14 20:3x, `PENDING (QOSGrpGRES)`
+- **Job SLURM**: `2085360` (`jobs/entrenar_coatnet_piloto.slurm`; 1 MI210, 16 CPUs, 64 GB, 12 h; `--test-only` estimaba inicio 2026-10-15 01:57 por la cuota de GPU de p082)
 - **Autor / Rama**: joako / `joako`
-- **Commit Git**: pendiente (se anota al lanzar)
+- **Commit Git**: `4c63cd5` (código, job, receta) sobre `bccbade`. `rsna/raptor_preproc.py` sin versionar; su sha256 (`a4c87a83…`) queda en `runs_joako/2085360/inputs.txt`
 - **Hipótesis**: un único CoAtNet (`coatnet_rmlp_2_rw_384`) con atención MIL por hallazgo sobre 96 cortes nativos a 384 px, entrenado con etiquetas blendjev, supera en OOF a nuestra mejor familia individual (effhib, EfficientNetV2-S 2.5D sobre 4×16 cortes a 288). Sustento: en el #53 esa receta sin OAI dio 0.940-0.942 público, frente a 0.918 de nuestro ensamble de 20 modelos.
 - **Modificación**: no es una variable aislada. Cambian a la vez backbone, corpus (native384 de 140 mm), cabeza, etiquetas (blendjev) y receta de optimización. Es una prueba de receta completa frente a la mejor familia, no un ablado.
 - **Configuración / Comando**: receta completa y origen de cada parámetro en `experiments/reportes/receta_coatnet.md`. Etiquetas en `runs_joako/etiquetas_coatnet_20261014/` (blendjev sha256 `5347cc5bbbe8…`). Pesos timm locales sha256 `91570c7af10f…`. Fold 0 = md5 % 5 sobre los 4,349: 3,458 de entrenamiento, 891 OOF y 58 Gold. 16 épocas × 216 pasos; fp16 + GradScaler; corpus en `/scratch`, borrado al salir.
@@ -557,3 +557,33 @@ Toda la implementación está en archivos nuevos (`rsna/modelo_att.py`, `entrena
 - **Limitaciones declaradas**: (1) El juez v1 solo tiene 269 celdas de Synovitis y 497 de Baker's en el fold 0. (2) El AUC Gold del SWA está sesgado al alza porque las épocas se eligen con Gold, y JEV y v1 se ajustaron sobre esos 58 (`lessons.md` §1.2). (3) Una sola semilla y un solo fold; no mide varianza. (4) Entrena con el 80 % de los datos, a diferencia del all-data del #53.
 - **Duración / Recursos estimados**: 6.5-8 h de GPU (≈20-26 min por época con evaluación), corpus ~10 min.
 - **Siguiente Paso**: según el criterio, decidir all-data y semillas (jcastro).
+
+---
+
+### [2026-10-15 07:10] — Diagnóstico del CoAtNet: 4 corridas cortas de una sola variable (+ base opcional)
+- **Estado**: PLANNED (esperando OK de jcastro; nada enviado a GPU)
+- **Job SLURM**: pendiente (`jobs/diag_coatnet.slurm`, `MODO=bn8|accum8|dd44|control|base6`). Diagnóstico previo de CPU: `2088310` (`jobs/diag_bn_eval_cpu.slurm`)
+- **Autor / Rama**: joako / `joako`
+- **Commit Git**: `ffa42d8` + cambios sin versionar (sin commits por instrucción de jcastro; cada job copia el código y su sha256 a la carpeta `codigo` de su salida)
+- **Hipótesis**: el piloto 2085360 (Gold 0.869, OOF v1 0.8409) queda ~0.05 por debajo de la receta pública de dreaddevelopment (~0.917 Gold) por el ENTRENAMIENTO o sus DATOS, no por la evaluación (raptor_0949 da ~0.918 con ella). Sospechas ordenadas (`experiments/reportes/bug_coatnet.md`): (1) BatchNorm con micro-lotes de 1 estudio (25 BN en stem y etapas 0-1); (2) 2.5× menos pasos de optimizador (acumulación 16); (3) corpus de 96 cortes densos frente a 44 con máscara.
+- **Modificación**: una variable por corrida: `bn8` (micro-lote 8 × acumulación 2), `accum8` (acumulación 8), `dd44` (corpus de 44 cortes), `control` (bucle de dreaddevelopment portado sobre dd44). `base6` = piloto sin cambios a 6 épocas, para separar el efecto del recocido del OneCycle reescalado.
+- **Configuración / Comando**: fold 0 (md5 % 5), 6 épocas, OneCycle reescalado, 1 MI210 por corrida, corpus en /scratch, `last_fp16.pt` a Lustre.
+- **Baseline de Referencia**: piloto 2085360 en su 6.ª época (índice 5): Gold 0.8152, OOF v1 0.7942 (o `base6` en su 6.ª época, si jcastro lo aprueba).
+- **Criterio de Aceptación (fijado antes de lanzar, jcastro)**: una corrida «encuentra el bug» si en la 6.ª época supera a la referencia por ≥ 0.02 en Gold Y ≥ 0.01 en OOF v1 (contra el piloto: Gold ≥ 0.8352 y OOF v1 ≥ 0.8042).
+- **Limitaciones declaradas**: Gold n = 58 (±0.02-0.03 entre épocas); una semilla; el criterio contra el historial del piloto está sesgado a favor de las corridas por el recocido de un OneCycle de 6 épocas (motivo de `base6`); límite de 4 GPUs por `qos082`.
+- **Duración / Recursos estimados**: ~2.5-3.5 h por corrida; < 1 GB en Lustre en total.
+- **Decisión de jcastro (2026-10-15)**: opción (a). Referencia = `base6` (piloto sin cambios, 6 épocas, OneCycle reescalado). **Criterio definitivo de éxito/parada**: una corrida supera a `base6` al final de las 6 épocas por >= +0.020 en Gold y >= +0.010 en OOF v1. Primera ola: `base6`, `dd44`, `bn8`, `control`; `accum8` en cola como 5.º (límite de 4 GPUs de `qos082`). Esto no autoriza entrenamientos de 16 épocas ni all-data.
+- **Jobs enviados (2026-10-15)**: `base6` = 2089449, `dd44` = 2089450, `bn8` = 2089451, `control` = 2089452, `accum8` = 2089453 (5.º; espera GPU por el límite de `qos082`). Cuota antes del envío: 548.7 GB de 700 GB.
+- **Siguiente Paso**: verificar arranque; al terminar, comparar cada corrida con `base6` en la época 6 con el criterio definitivo.
+
+---
+
+### [2026-10-15 09:30] — Cierre y registro retroactivo: jobs de la noche del 14 al 15 (documentados antes solo en reportes)
+- **Estado**: COMPLETED (registro retroactivo; los detalles y criterios previos están en los reportes citados)
+- **Autor / Rama**: joako / `joako`
+- **Piloto CoAtNet `2085360`** (`experiments/reportes/receta_coatnet.md`): 16 épocas, 6.11 h. SWA (épocas 14, 15, 13): Gold 0.8689, OOF v1 **0.8409**; última época: Gold 0.8686, OOF v1 0.8410. Frente a effhib en el fold 0 (0.8628): Δ −0.0219, IC95 [−0.0316, −0.0120], P(Δ>0) = 0 % → **NO PASA** (SWA y última coinciden). fp16 sano: 2.31 % de pasos saltados en la ép. 0 y 0 % después. El Gold subió casi monótono de 0.68 a 0.87 y seguía subiendo.
+- **Fine-tuning desde 0.949** (`experiments/reportes/ft0949.md`, HEREDA OAI, solo Final A): `2085552` (V1, 307→224 px, 0.75 h) y `2085553` (V2, recorte de 320 px, 1.48 h). Base 0.949 evaluada con nuestra evaluación: Gold ~0.918 (0.9179 en V2). V2: última 0.9138, prom3 0.9135, Spearman frente a la base 0.973 (clon, umbral 0.95) → prom3 **NO PASA**. V1: última 0.9118, prom3 0.9110; la última PASA (Spearman 0.9496 < 0.95) y prom3 NO PASA. El Gold diagnóstico está contaminado; el ajuste fino no mejora la base.
+- **Semillas all-data `2085556` (s7), `2085557` (s2026) y lado unificado `2085558`** (`experiments/reportes/seeds_coatnet.md`): el gate cerró en 2 s (`criterio_swa` del piloto = NO PASA, Δ −0.0219); no se entrenó nada.
+- **Reetiquetado LLM `2085625`** (`experiments/reportes/llm_reetiquetado.md`, fase Gold): 58 Gold con 3 lectores, 0.68 h. Macro Gold del consenso 0.8836 (consenso_status 0.8484; qwen3.5:27b 0.8852, qwen2.5:72b 0.8401, llama3.3:70b 0.8555; v1 sesgado al alza porque se calibró con estos 58).
+- **Reevaluación de BatchNorm en CPU `2088310`** (`jobs/diag_bn_eval_cpu.slurm`, `rsna/diag_bn_eval.py`, 23 min): SWA del piloto, 58 Gold, fp32. A eval normal 0.8690 (reproduce el piloto), B BN por estudio 0.8725, C recalibrada con 1 estudio por lote 0.8685, D con 8 estudios 0.8675. Las cuatro caen dentro de ±0.004: no hay desajuste de BN entre train y eval.
+- **Lección Aprendida**: el piloto no falla por la evaluación ni por BatchNorm en eval; el hueco con la receta pública está en el entrenamiento (dinámica de BN con lote de 1 estudio, número de pasos, corpus) o en las etiquetas, y solo corridas con una variable cambiada lo separan (entrada «Diagnóstico del CoAtNet» de hoy y `experiments/reportes/bug_coatnet.md`).
