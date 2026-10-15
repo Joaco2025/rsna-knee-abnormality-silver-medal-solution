@@ -1,0 +1,238 @@
+[
+ {
+  "celda": 3,
+  "sha256_celda": "32c4445b136e86d744ed5e2c465ad60cbc6fa781f06511280bf38c3dd634f2b7",
+  "nodos": [
+   "import (from __future__ import annotations)",
+   "import (import time as _startup_time)",
+   "import (import os)",
+   "import (import gc)",
+   "import (import hashlib)",
+   "import (import json)",
+   "import (import re)",
+   "import (import time)",
+   "import (import traceback)",
+   "import (import threading)",
+   "import (from concurrent.futures import ThreadPoolExecutor)",
+   "import (from pathlib import Path)",
+   "import (import numpy as np)",
+   "import (import pandas as pd)",
+   "import (import pydicom)",
+   "import (import torch)",
+   "import (import torch.nn as nn)",
+   "import (import torch.nn.functional as F)",
+   "def _cuda_execution_probe",
+   "asignación T0",
+   "asignación SEED",
+   "asignación TARGETS",
+   "asignación CROP_MM",
+   "asignación CACHE_IMG",
+   "asignación GROUP",
+   "asignación N_GROUP_MAX",
+   "asignación CACHE_FRACTION",
+   "asignación CACHE_BUDGET_MAX_GB",
+   "asignación CACHE_BUDGET_GB",
+   "asignación TEST_SHARE",
+   "asignación HDR_THREADS",
+   "asignación PIX_THREADS",
+   "asignación ORDER_THREADS",
+   "asignación ORDER_BUDGET_S",
+   "asignación RUNS",
+   "asignación EPOCHS",
+   "asignación BATCH_STUDIES",
+   "asignación AUG_ROT_DEG",
+   "asignación AUG_SCALE",
+   "asignación AUG_SHIFT",
+   "asignación AUG_INTENSITY",
+   "asignación LAT_MIN_OFFSET_MM",
+   "asignación SLICE_BAND",
+   "asignación RULES_NATIVE",
+   "asignación RULES_LEGACY",
+   "asignación RULES",
+   "asignación LEGACY_LAT_OFFSET_MM",
+   "asignación LR_HEAD",
+   "asignación LR_BACKBONE",
+   "asignación UNFREEZE_LAST",
+   "asignación WEIGHT_DECAY",
+   "asignación EVAL_BATCH",
+   "asignación TIME_BUDGET",
+   "asignación SLOTS_RECOVERED",
+   "asignación SLOTS_PUBLIC",
+   "asignación SLOT_SCHEME",
+   "asignación SLOTS",
+   "asignación N_SLOT",
+   "asignación POOL_PARTS",
+   "asignación SLOT_PRIOR_TABLE",
+   "asignación SLOT_PRIOR_STRENGTH",
+   "asignación FATSAT_OPTS",
+   "asignación _SEP",
+   "asignación _FATSAT_RX",
+   "asignación _T1_RX",
+   "asignación _T2_RX",
+   "asignación _PD_RX",
+   "import (import os, json, hashlib, time, threading, tempfile)",
+   "import (from pathlib import Path)",
+   "import (import numpy as np)",
+   "import (import pandas as pd)",
+   "asignación _RSNA_AUDIT_LOCK",
+   "asignación _RSNA_AUDIT",
+   "asignación _RSNA_ORDER_MEMO",
+   "asignación _RSNA_HEADERS_MEMO",
+   "asignación _RSNA_CACHE_FILES",
+   "asignación _RSNA_TEST_IDS",
+   "asignación _RSNA_LABELS",
+   "def rsna_sha",
+   "def rsna_json",
+   "def rsna_event",
+   "def rsna_finite",
+   "def rsna_rank01",
+   "def rsna_rankpct",
+   "def rsna_frame",
+   "def rsna_save_predictions",
+   "def rsna_strict_load",
+   "def rsna_deadline",
+   "def rsna_array",
+   "def rsna_release_pixels",
+   "def rsna_phase"
+  ]
+ },
+ {
+  "celda": 4,
+  "sha256_celda": "61f911b3b024f870718f1eb123e051f2cd9f3718b4473a62d4b211fd151ea555",
+  "nodos": [
+   "def log",
+   "def _one_direct",
+   "def find_dinov2",
+   "asignación IMG"
+  ]
+ },
+ {
+  "celda": 5,
+  "sha256_celda": "a773890aca786656f025af0f008fd97bcd0736eb143698d71cd16448bb8fce76",
+  "nodos": [
+   "asignación HDR_TAGS",
+   "def _hdr_vec",
+   "def side_from_geometry",
+   "def side_from_corner_x",
+   "def lat_of",
+   "def probe",
+   "def walk",
+   "def annotate"
+  ]
+ },
+ {
+  "celda": 6,
+  "sha256_celda": "a554f7d0f44a197e371a0ce3ce734466c2658bae27c09d6ffd7855cb4210f1a5",
+  "nodos": [
+   "def pick_slots"
+  ]
+ },
+ {
+  "celda": 7,
+  "sha256_celda": "0d2a6d71963ae849b3e39ea27ee739a769e33d1e0779b4ff2be9b0e7f50821fa",
+  "nodos": [
+   "asignación ORDER_TAGS",
+   "asignación DECODE_FAILED",
+   "asignación RAPTOR_HEADER_CACHE",
+   "def _natural_key",
+   "def _order_dominant_axis",
+   "def order_slices",
+   "def read_slot"
+  ]
+ },
+ {
+  "celda": 8,
+  "sha256_celda": "ba17bd3298fc57f07ef581794ee274b5d4990b62a999086881ed6f57bcd882aa",
+  "nodos": [
+   "def normalise_laterality"
+  ]
+ },
+ {
+  "celda": 9,
+  "sha256_celda": "a1334e4b2174f1512d3dcd7f46ba257d698b83a6e399b8c1e6c2fa0901f29b8a",
+  "nodos": [
+   "def build_cache"
+  ]
+ },
+ {
+  "celda": 10,
+  "sha256_celda": "6878773f8ffa7883670b9bfceed886f80465514cea3ab30057c7378406531507",
+  "nodos": [
+   "class SlotHead"
+  ]
+ },
+ {
+  "celda": 11,
+  "sha256_celda": "17434f44700a37e344f33040cf12618806370b438c0f2b2f8fe3caa8b42af065",
+  "nodos": [
+   "class Model"
+  ]
+ },
+ {
+  "celda": 12,
+  "sha256_celda": "0cee81943e6bfbb987380cf9c88b2ed961acde926d96211154c4b2946f6e849e",
+  "nodos": [
+   "def build_model",
+   "asignación _speed_original_build_model",
+   "import (import copy as _speed_copy)",
+   "import (import threading as _speed_dino_threading)",
+   "asignación _speed_dino_templates",
+   "asignación _speed_dino_lock",
+   "def build_model"
+  ]
+ },
+ {
+  "celda": 13,
+  "sha256_celda": "a816bbcb91c3f8645f847d921a7e387df9ba7301c546ed151299a050c6e1e56c",
+  "nodos": [
+   "asignación SHARED_DINO_PREFIX_LAYERS",
+   "asignación SHARED_DINO_PREFIX_SHA256",
+   "def _shared_prefix_state_sha256",
+   "def _shared_prefix_eligible",
+   "def _shared_dino_prefix",
+   "def _shared_dino_tail",
+   "def _predict_shared_dino_members",
+   "def _check_shared_dino_path",
+   "def _run_shared_dino_group",
+   "asignación FINGERPRINT_TOL",
+   "asignación EXPECTED_DINOV2_MEMBERS",
+   "asignación _DINOV2_MATCHED_MEMBERS",
+   "def fingerprint",
+   "def check_fingerprint",
+   "class WeightsError",
+   "def find_weights",
+   "asignación TTA_OVERLAP",
+   "asignación TTA_POOL",
+   "asignación PUBLIC_FRONTIER_TARGET_POOL",
+   "asignación TTA_TARGET_POOL",
+   "asignación LEGACY_FOLD_SOFTPOOL_BETA",
+   "asignación LEGACY_FOLD_SOFTPOOL_ALPHA",
+   "asignación LEGACY_MEMBER_WEIGHT_BY_TARGET",
+   "def window_starts",
+   "def apply_target_window_pool",
+   "def legacy_fold_soft_window_pool",
+   "def predict_member",
+   "asignación BUILD_LOCK",
+   "asignación STATE_LOCK",
+   "asignación LEGACY_BUNDLE_FILE",
+   "asignación LEGACY_WEIGHT",
+   "def find_legacy_bundle",
+   "def legacy_group_members",
+   "def _run_member",
+   "def _combine",
+   "def combine_public_members_by_fold",
+   "def blend_legacy_frontier_and_soft",
+   "def infer_from_package",
+   "def adopt_config_globals"
+  ]
+ },
+ {
+  "celda": 14,
+  "sha256_celda": "9006955666c6c5f89bd87d606b83d5fba2d446c42168e223491e11b8b8f95102",
+  "nodos": [
+   "def write_submission",
+   "def _v37_validate_submission",
+   "def main"
+  ]
+ }
+]
