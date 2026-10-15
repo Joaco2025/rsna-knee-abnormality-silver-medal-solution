@@ -85,14 +85,14 @@ class KneeNet(nn.Module):
         super().__init__()
         self.backbone, self.per_label, self.context, self.pool = backbone, per_label, context, pool
         self.n_out = n_out
+        # Sinovitis = salida propia + beta * salida de derrame (sin gradiente hacia derrame); beta parte de 0.
+        self.syn_beta = nn.Parameter(torch.zeros(())) if syn_eff else None
+        self.encoder, feat = make_encoder(backbone, weights_path)
         # Posición relativa del corte en su serie (-1 a 1), proyectada y sumada a cada corte; parte de cero.
         # Con el lado unificado, en sagital dice si el corte es medial o lateral.
         self.pos_lin = nn.Linear(1, feat, bias=False) if slice_pos else None
         if self.pos_lin is not None:
             nn.init.zeros_(self.pos_lin.weight)
-        # Sinovitis = salida propia + beta * salida de derrame (sin gradiente hacia derrame); beta parte de 0.
-        self.syn_beta = nn.Parameter(torch.zeros(())) if syn_eff else None
-        self.encoder, feat = make_encoder(backbone, weights_path)
         self.slot_emb = nn.Parameter(torch.zeros(n_slots, feat))
         if pool == "espacial":   # cada hallazgo atiende a su propia zona del corte, con posición 2D; parte de la media
             assert per_label, "--pool espacial requiere --atencion hallazgo"
