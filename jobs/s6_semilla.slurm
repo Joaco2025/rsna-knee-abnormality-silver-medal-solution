@@ -52,7 +52,7 @@ mkdir -p "$SCR"
 (
   flock -w 21600 9 || { echo "candado de la caché ocupado > 6 h"; exit 75; }
   if [ ! -f "$SCR/px/index.json" ]; then
-    "$PY" -u "$S6/renderizar_px.py" --pool "$S6/data/pool_ok.json" --out "$SCR/px" --anchors "$ANC" \
+    "$PY" -u "$S6/renderizar_px.py" --pool "$S6/data/pool_ok.json" --out "$SCR/px" --anchors "$ANC" --manifiesto "$ANC/manifest.jsonl" \
       --tmp "/tmp/s6px_${SLURM_JOB_ID}" --workers 14 2>&1 | tee "$OUT/render.log"
   else
     echo "caché existente en $(hostname):$SCR/px"
