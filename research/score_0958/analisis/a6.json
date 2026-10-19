@@ -1,0 +1,212 @@
+{
+ "n_features": 145,
+ "contraste_frac_estudios": 0.346,
+ "n": 4349,
+ "meta_solo_auc_jev": {
+  "ACL": 0.7055,
+  "MCL": 0.651,
+  "Medial Meniscus": 0.5717,
+  "Lateral Meniscus": 0.5991,
+  "Medial OA": 0.6537,
+  "Lateral OA": 0.6922,
+  "PF OA": 0.6718,
+  "Effusion": 0.6177,
+  "Synovitis": 0.7555,
+  "Baker's": 0.6586,
+  "Contusion": 0.631,
+  "Fracture": 0.6091
+ },
+ "meta_solo_macro": 0.6514,
+ "imagen_mas_meta_delta_por_hallazgo_anidado": {
+  "ACL": 0.0025,
+  "MCL": 0.0054,
+  "Medial Meniscus": 0.0,
+  "Lateral Meniscus": 0.0015,
+  "Medial OA": 0.0025,
+  "Lateral OA": 0.005,
+  "PF OA": 0.0022,
+  "Effusion": 0.0013,
+  "Synovitis": 0.0225,
+  "Baker's": 0.0089,
+  "Contusion": 0.0008,
+  "Fracture": -0.0
+ },
+ "imagen_mas_meta_delta_macro": 0.0044,
+ "imagen_mas_meta_ic95": [
+  0.0036,
+  0.0053
+ ],
+ "w_elegidos": {
+  "ACL": [
+   0.1,
+   0.1,
+   0.1,
+   0.1,
+   0.1
+  ],
+  "MCL": [
+   0.15,
+   0.15,
+   0.15,
+   0.15,
+   0.15
+  ],
+  "Medial Meniscus": [
+   0.0,
+   0.0,
+   0.0,
+   0.0,
+   0.0
+  ],
+  "Lateral Meniscus": [
+   0.05,
+   0.05,
+   0.05,
+   0.05,
+   0.05
+  ],
+  "Medial OA": [
+   0.1,
+   0.1,
+   0.1,
+   0.1,
+   0.1
+  ],
+  "Lateral OA": [
+   0.2,
+   0.15,
+   0.15,
+   0.2,
+   0.2
+  ],
+  "PF OA": [
+   0.15,
+   0.1,
+   0.1,
+   0.15,
+   0.15
+  ],
+  "Effusion": [
+   0.15,
+   0.1,
+   0.1,
+   0.1,
+   0.1
+  ],
+  "Synovitis": [
+   0.3,
+   0.3,
+   0.3,
+   0.3,
+   0.3
+  ],
+  "Baker's": [
+   0.2,
+   0.2,
+   0.2,
+   0.15,
+   0.2
+  ],
+  "Contusion": [
+   0.05,
+   0.05,
+   0.1,
+   0.1,
+   0.05
+  ],
+  "Fracture": [
+   0.02,
+   0.05,
+   0.02,
+   0.05,
+   0.05
+  ]
+ },
+ "gold": {
+  "ACL": {
+   "meta_solo": 0.662,
+   "raptor": 0.979,
+   "raptor+meta_0.1": 0.974
+  },
+  "MCL": {
+   "meta_solo": 0.612,
+   "raptor": 0.95,
+   "raptor+meta_0.1": 0.941
+  },
+  "Medial Meniscus": {
+   "meta_solo": 0.516,
+   "raptor": 0.98,
+   "raptor+meta_0.1": 0.972
+  },
+  "Lateral Meniscus": {
+   "meta_solo": 0.622,
+   "raptor": 0.893,
+   "raptor+meta_0.1": 0.897
+  },
+  "Medial OA": {
+   "meta_solo": 0.721,
+   "raptor": 0.98,
+   "raptor+meta_0.1": 0.972
+  },
+  "Lateral OA": {
+   "meta_solo": 0.791,
+   "raptor": 0.778,
+   "raptor+meta_0.1": 0.791
+  },
+  "PF OA": {
+   "meta_solo": 0.748,
+   "raptor": 0.856,
+   "raptor+meta_0.1": 0.861
+  },
+  "Effusion": {
+   "meta_solo": 0.501,
+   "raptor": 0.981,
+   "raptor+meta_0.1": 0.969
+  },
+  "Synovitis": {
+   "meta_solo": 0.465,
+   "raptor": 0.815,
+   "raptor+meta_0.1": 0.803
+  },
+  "Baker's": {
+   "meta_solo": 0.607,
+   "raptor": 0.971,
+   "raptor+meta_0.1": 0.966
+  },
+  "Contusion": {
+   "meta_solo": 0.592,
+   "raptor": 0.945,
+   "raptor+meta_0.1": 0.941
+  },
+  "Fracture": {
+   "meta_solo": 0.429,
+   "raptor": 0.957,
+   "raptor+meta_0.1": 0.946
+  }
+ },
+ "gold_macro": {
+  "meta_solo": 0.6055,
+  "raptor": 0.9238,
+  "raptor+meta_0.1": 0.9194
+ },
+ "dup_corr_top1_percentiles": {
+  "50": 0.756,
+  "90": 0.85,
+  "99": 0.904,
+  "99.9": 0.93
+ },
+ "dup_pares_corr_gt_0.95": 0,
+ "dup_pares_corr_gt_0.90": 57,
+ "dup_acuerdo_etiquetas": {
+  "0.8": {
+   "n": 1171,
+   "acuerdo_vecino": 0.695,
+   "acuerdo_azar": 0.662
+  },
+  "0.9": {
+   "n": 57,
+   "acuerdo_vecino": 0.617,
+   "acuerdo_azar": 0.665
+  }
+ }
+}

@@ -1,0 +1,275 @@
+{
+ "r384": {
+  "macro_base": 0.9229,
+  "0.05": {
+   "delta": 0.0005,
+   "ic95": [
+    -0.0017,
+    0.0029
+   ],
+   "p_mejora": 0.679,
+   "por_hallazgo": {
+    "ACL": 0.002,
+    "MCL": 0.0,
+    "Medial Meniscus": 0.0,
+    "Lateral Meniscus": -0.001,
+    "Medial OA": 0.002,
+    "Lateral OA": -0.002,
+    "PF OA": -0.004,
+    "Effusion": 0.002,
+    "Synovitis": 0.002,
+    "Baker's": 0.002,
+    "Contusion": -0.001,
+    "Fracture": 0.004
+   }
+  },
+  "0.1": {
+   "delta": 0.0011,
+   "ic95": [
+    -0.0029,
+    0.0051
+   ],
+   "p_mejora": 0.691,
+   "por_hallazgo": {
+    "ACL": 0.005,
+    "MCL": -0.005,
+    "Medial Meniscus": 0.005,
+    "Lateral Meniscus": 0.0,
+    "Medial OA": 0.006,
+    "Lateral OA": -0.006,
+    "PF OA": -0.009,
+    "Effusion": 0.001,
+    "Synovitis": 0.011,
+    "Baker's": 0.0,
+    "Contusion": -0.005,
+    "Fracture": 0.01
+   }
+  },
+  "0.2": {
+   "delta": -0.0031,
+   "ic95": [
+    -0.0099,
+    0.0037
+   ],
+   "p_mejora": 0.169,
+   "por_hallazgo": {
+    "ACL": 0.005,
+    "MCL": -0.016,
+    "Medial Meniscus": 0.005,
+    "Lateral Meniscus": -0.02,
+    "Medial OA": 0.009,
+    "Lateral OA": -0.021,
+    "PF OA": -0.017,
+    "Effusion": 0.002,
+    "Synovitis": 0.019,
+    "Baker's": -0.002,
+    "Contusion": -0.018,
+    "Fracture": 0.015
+   }
+  },
+  "0.3": {
+   "delta": -0.0115,
+   "ic95": [
+    -0.0225,
+    -0.0007
+   ],
+   "p_mejora": 0.019,
+   "por_hallazgo": {
+    "ACL": 0.006,
+    "MCL": -0.029,
+    "Medial Meniscus": -0.001,
+    "Lateral Meniscus": -0.032,
+    "Medial OA": 0.005,
+    "Lateral OA": -0.041,
+    "PF OA": -0.036,
+    "Effusion": 0.001,
+    "Synovitis": 0.023,
+    "Baker's": -0.016,
+    "Contusion": -0.038,
+    "Fracture": 0.021
+   }
+  }
+ },
+ "r224": {
+  "macro_base": 0.9163,
+  "0.05": {
+   "delta": 0.001,
+   "ic95": [
+    -0.0014,
+    0.0035
+   ],
+   "p_mejora": 0.797,
+   "por_hallazgo": {
+    "ACL": 0.002,
+    "MCL": 0.0,
+    "Medial Meniscus": 0.002,
+    "Lateral Meniscus": 0.0,
+    "Medial OA": 0.002,
+    "Lateral OA": -0.004,
+    "PF OA": -0.001,
+    "Effusion": 0.001,
+    "Synovitis": 0.005,
+    "Baker's": 0.0,
+    "Contusion": 0.0,
+    "Fracture": 0.004
+   }
+  },
+  "0.1": {
+   "delta": 0.0006,
+   "ic95": [
+    -0.0031,
+    0.0046
+   ],
+   "p_mejora": 0.622,
+   "por_hallazgo": {
+    "ACL": 0.002,
+    "MCL": -0.002,
+    "Medial Meniscus": 0.005,
+    "Lateral Meniscus": -0.002,
+    "Medial OA": 0.003,
+    "Lateral OA": -0.01,
+    "PF OA": -0.005,
+    "Effusion": 0.001,
+    "Synovitis": 0.008,
+    "Baker's": 0.0,
+    "Contusion": -0.001,
+    "Fracture": 0.008
+   }
+  },
+  "0.2": {
+   "delta": -0.0039,
+   "ic95": [
+    -0.0109,
+    0.003
+   ],
+   "p_mejora": 0.135,
+   "por_hallazgo": {
+    "ACL": 0.005,
+    "MCL": -0.005,
+    "Medial Meniscus": 0.0,
+    "Lateral Meniscus": -0.021,
+    "Medial OA": 0.006,
+    "Lateral OA": -0.037,
+    "PF OA": -0.014,
+    "Effusion": 0.004,
+    "Synovitis": 0.012,
+    "Baker's": 0.0,
+    "Contusion": -0.012,
+    "Fracture": 0.015
+   }
+  },
+  "0.3": {
+   "delta": -0.0086,
+   "ic95": [
+    -0.0186,
+    0.0008
+   ],
+   "p_mejora": 0.037,
+   "por_hallazgo": {
+    "ACL": 0.001,
+    "MCL": -0.011,
+    "Medial Meniscus": -0.002,
+    "Lateral Meniscus": -0.037,
+    "Medial OA": -0.002,
+    "Lateral OA": -0.043,
+    "PF OA": -0.03,
+    "Effusion": 0.004,
+    "Synovitis": 0.018,
+    "Baker's": 0.004,
+    "Contusion": -0.023,
+    "Fracture": 0.018
+   }
+  }
+ },
+ "mezcla_65_35": {
+  "macro_base": 0.9237,
+  "0.05": {
+   "delta": 0.001,
+   "ic95": [
+    -0.0013,
+    0.0034
+   ],
+   "p_mejora": 0.8,
+   "por_hallazgo": {
+    "ACL": 0.001,
+    "MCL": 0.0,
+    "Medial Meniscus": 0.002,
+    "Lateral Meniscus": -0.001,
+    "Medial OA": 0.0,
+    "Lateral OA": 0.0,
+    "PF OA": -0.004,
+    "Effusion": 0.001,
+    "Synovitis": 0.005,
+    "Baker's": 0.002,
+    "Contusion": 0.0,
+    "Fracture": 0.006
+   }
+  },
+  "0.1": {
+   "delta": 0.0012,
+   "ic95": [
+    -0.0026,
+    0.0049
+   ],
+   "p_mejora": 0.753,
+   "por_hallazgo": {
+    "ACL": 0.005,
+    "MCL": 0.002,
+    "Medial Meniscus": 0.004,
+    "Lateral Meniscus": -0.001,
+    "Medial OA": 0.005,
+    "Lateral OA": -0.01,
+    "PF OA": -0.008,
+    "Effusion": 0.002,
+    "Synovitis": 0.01,
+    "Baker's": 0.002,
+    "Contusion": -0.003,
+    "Fracture": 0.007
+   }
+  },
+  "0.2": {
+   "delta": -0.0024,
+   "ic95": [
+    -0.0087,
+    0.0036
+   ],
+   "p_mejora": 0.218,
+   "por_hallazgo": {
+    "ACL": 0.006,
+    "MCL": -0.005,
+    "Medial Meniscus": 0.006,
+    "Lateral Meniscus": -0.016,
+    "Medial OA": 0.009,
+    "Lateral OA": -0.031,
+    "PF OA": -0.014,
+    "Effusion": 0.001,
+    "Synovitis": 0.016,
+    "Baker's": 0.0,
+    "Contusion": -0.013,
+    "Fracture": 0.012
+   }
+  },
+  "0.3": {
+   "delta": -0.0119,
+   "ic95": [
+    -0.0219,
+    -0.0025
+   ],
+   "p_mejora": 0.008,
+   "por_hallazgo": {
+    "ACL": 0.005,
+    "MCL": -0.025,
+    "Medial Meniscus": 0.005,
+    "Lateral Meniscus": -0.036,
+    "Medial OA": 0.003,
+    "Lateral OA": -0.046,
+    "PF OA": -0.032,
+    "Effusion": -0.001,
+    "Synovitis": 0.013,
+    "Baker's": -0.013,
+    "Contusion": -0.035,
+    "Fracture": 0.019
+   }
+  }
+ }
+}

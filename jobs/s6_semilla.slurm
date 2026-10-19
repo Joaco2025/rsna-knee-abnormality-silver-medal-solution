@@ -32,12 +32,14 @@ SEED=${SEMILLAS[${SLURM_ARRAY_TASK_ID:?}]}
 ANC="${ANCLAS:?definir ANCLAS=runs_joako/<job de anclas>/anchors}"
 INIT="$EXP/entradas/convnext_small/model.safetensors"
 FOLDS="$EXP/entradas/hpo_assets/folds_v0.json"
+# Objetivos: por defecto los de nartaa (JEV); OBJETIVOS=$S6/data/targets_s6f0_destil.csv = destilación (0.5 JEV + 0.5 Raptor calibrado)
+OBJETIVOS="${OBJETIVOS:-$S6/data/targets_s6f0.csv}"
 OUT="${REANUDAR:-$PROJ/runs_joako/${SLURM_ARRAY_JOB_ID:?}_${SLURM_ARRAY_TASK_ID}}"
 mkdir -p "$OUT"
 export MIOPEN_USER_DB_PATH="/tmp/miopen_${SLURM_JOB_ID:?}"
 mkdir -p "$MIOPEN_USER_DB_PATH"
 export PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1 PYTORCH_HIP_ALLOC_CONF=expandable_segments:True
-echo "job=$SLURM_JOB_ID tarea=$SLURM_ARRAY_TASK_ID semilla=$SEED nodo=$(hostname) inicio=$(date -Is)" | tee -a "$OUT/info.txt"
+echo "job=$SLURM_JOB_ID tarea=$SLURM_ARRAY_TASK_ID semilla=$SEED objetivos=$OBJETIVOS nodo=$(hostname) inicio=$(date -Is)" | tee -a "$OUT/info.txt"
 sha256sum "$S6"/*.py | tee "$OUT/codigo.sha256"
 
 # entradas fijadas por nartaa
@@ -59,7 +61,7 @@ mkdir -p "$SCR"
 df -h "$SCR" | tee -a "$OUT/info.txt"
 
 "$PY" -B -u "$S6/train_s6f0_all.py" \
-  --pool "$S6/data/pool_ok.json" --folds-json "$FOLDS" --targets "$S6/data/targets_s6f0.csv" --out "$OUT/train" --arms E_prior \
+  --pool "$S6/data/pool_ok.json" --folds-json "$FOLDS" --targets "$OBJETIVOS" --out "$OUT/train" --arms E_prior \
   --backbone convnext_small --init "$INIT" --seeds 1 --seed-base "$SEED" --folds 5 --only-folds 0 \
   --expect-train 4263 --expect-holdout 0 --all-data \
   --epochs 16 --batch 2 --train-windows 64 --size 320 --views v4 --crop 288 --slices 3 --phys-mm 3.5 \

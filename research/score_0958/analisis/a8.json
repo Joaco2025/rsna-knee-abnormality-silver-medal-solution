@@ -1,0 +1,120 @@
+{
+ "meta_lineal_gold": {
+  "Synovitis": 0.505,
+  "Fracture": 0.506
+ },
+ "r384": {
+  "0.1": {
+   "delta_macro": 0.0012,
+   "ic95": [
+    -0.0007,
+    0.0031
+   ],
+   "p_mejora": 0.897,
+   "por_hallazgo": {
+    "Synovitis": 0.0084,
+    "Fracture": 0.0056
+   }
+  },
+  "0.2": {
+   "delta_macro": 0.001,
+   "ic95": [
+    -0.0023,
+    0.0042
+   ],
+   "p_mejora": 0.746,
+   "por_hallazgo": {
+    "Synovitis": 0.0108,
+    "Fracture": 0.0014
+   }
+  },
+  "0.3": {
+   "delta_macro": -0.0006,
+   "ic95": [
+    -0.0062,
+    0.0044
+   ],
+   "p_mejora": 0.421,
+   "por_hallazgo": {
+    "Synovitis": 0.0024,
+    "Fracture": -0.0097
+   }
+  }
+ },
+ "r224": {
+  "0.1": {
+   "delta_macro": 0.0007,
+   "ic95": [
+    -0.0013,
+    0.0026
+   ],
+   "p_mejora": 0.76,
+   "por_hallazgo": {
+    "Synovitis": 0.0054,
+    "Fracture": 0.0028
+   }
+  },
+  "0.2": {
+   "delta_macro": 0.0005,
+   "ic95": [
+    -0.0036,
+    0.004
+   ],
+   "p_mejora": 0.613,
+   "por_hallazgo": {
+    "Synovitis": 0.0066,
+    "Fracture": -0.0007
+   }
+  },
+  "0.3": {
+   "delta_macro": 0.0001,
+   "ic95": [
+    -0.0055,
+    0.005
+   ],
+   "p_mejora": 0.536,
+   "por_hallazgo": {
+    "Synovitis": 0.009,
+    "Fracture": -0.0076
+   }
+  }
+ },
+ "mezcla_65_35": {
+  "0.1": {
+   "delta_macro": 0.0009,
+   "ic95": [
+    -0.001,
+    0.0029
+   ],
+   "p_mejora": 0.836,
+   "por_hallazgo": {
+    "Synovitis": 0.0084,
+    "Fracture": 0.0028
+   }
+  },
+  "0.2": {
+   "delta_macro": 0.001,
+   "ic95": [
+    -0.0025,
+    0.0043
+   ],
+   "p_mejora": 0.725,
+   "por_hallazgo": {
+    "Synovitis": 0.0137,
+    "Fracture": -0.0014
+   }
+  },
+  "0.3": {
+   "delta_macro": 0.0004,
+   "ic95": [
+    -0.0046,
+    0.0053
+   ],
+   "p_mejora": 0.585,
+   "por_hallazgo": {
+    "Synovitis": 0.0108,
+    "Fracture": -0.0056
+   }
+  }
+ }
+}
