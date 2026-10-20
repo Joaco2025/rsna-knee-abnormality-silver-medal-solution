@@ -62,6 +62,8 @@ def main():
     ap.add_argument("--out", required=True, help="carpeta NUEVA (runs_joako/<job>)")
     ap.add_argument("--d42", required=True, help="runs_joako/2093337_0/train/models/E_prior_s42_fall.pt")
     ap.add_argument("--d7", required=True, help="runs_joako/2093337_1/train/models/E_prior_s7_fall.pt")
+    ap.add_argument("--s2026", default="", help="runs_joako/2098694_0/train/models/E_prior_s2026_fall.pt (opcional)")
+    ap.add_argument("--s1234", default="", help="runs_joako/2098694_1/train/models/E_prior_s1234_fall.pt (opcional)")
     ap.add_argument("--variantes", default="1:288,3:288,1:320",
                     help="stride:crop separados por comas; 1:288 = notebook; 3:288 = H5; 1:320 = imagen completa (campo de visión)")
     ap.add_argument("--amp", default="bf16")
@@ -75,6 +77,10 @@ def main():
     modelos.mkdir()
     mapa = {"s6": ("E_prior_s42_fall.pt", ORIGINAL), "s6_d42": ("E_prior_s1042_fall.pt", Path(a.d42)),
             "s6_d7": ("E_prior_s1007_fall.pt", Path(a.d7))}
+    if a.s2026:
+        mapa["s6_s2026"] = ("E_prior_s2026_fall.pt", Path(a.s2026))
+    if a.s1234:
+        mapa["s6_s1234"] = ("E_prior_s1234_fall.pt", Path(a.s1234))
     for k, (nombre, p) in mapa.items():
         os.symlink(p, modelos / nombre)
     orden = sorted(n for n, _ in mapa.values())                 # = sorted(glob) de compact_infer.load_group
