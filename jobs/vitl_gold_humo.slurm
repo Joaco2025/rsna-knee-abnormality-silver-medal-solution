@@ -34,7 +34,13 @@ echo "inicio=$(date -Is) nodo=$(hostname)"
 # por eso anatomy.pt se copia, no se enlaza; en Kaggle el dataset de heliosli ya trae kneexnet/ junto a anatomy.pt)
 cp "$ENT/anatomy.pt" "$OUT/pesos/anatomy.pt"
 ln -s "$ENT/dependencies/kneexnet" "$OUT/pesos/kneexnet"
-cd "$ENT/cloud_code"
+# copia del código de heliosli + el default.yaml de ultralytics 8.4.166 (heliosli lo vendorizó sin los archivos que no son .py;
+# los 230 .py son idénticos al wheel oficial).  Igual que en el notebook: se escribe en la COPIA, la entrada no se toca.
+cp -r "$ENT/cloud_code" "$OUT/code"
+Y="$OUT/code/training/vendor_runtime/kneexnet/ultralytics/cfg/default.yaml"
+cp "$PROJ/runs_joako/exp_ViTL/default.yaml" "$Y"
+echo "285fa6ff485cb5d556ed216b966f0952a391c89a651901c49b246fda18cf0108  $Y" | sha256sum -c -
+cd "$OUT/code"
 /usr/bin/time -v "$PY" -u -m training.infer --data "$OUT/gold58_comp" --checkpoint "$ENT/best.pt" \
   --output "$OUT/vitl" --anatomy-weights "$OUT/pesos/anatomy.pt" --workers 6 2>&1 | tee "$OUT/vitl_log.txt"
 echo "fin=$(date -Is)"
