@@ -30,8 +30,9 @@ mkdir -p "$MIOPEN_USER_DB_PATH"
 export PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HF_HUB_OFFLINE=1
 echo "inicio=$(date -Is) nodo=$(hostname)"
 "$PY" -I "$PROJ/runs_joako/exp_ViTL/raiz_gold.py" "$OUT/gold58_comp"
-# anatomy.pt y kneexnet/ juntos (infer.py busca kneexnet/ junto a los pesos de anatomía)
-ln -s "$ENT/anatomy.pt" "$OUT/pesos/anatomy.pt"
+# anatomy.pt y kneexnet/ juntos (anatomy_runtime resuelve el enlace de anatomy.pt y busca kneexnet/ en su carpeta REAL:
+# por eso anatomy.pt se copia, no se enlaza; en Kaggle el dataset de heliosli ya trae kneexnet/ junto a anatomy.pt)
+cp "$ENT/anatomy.pt" "$OUT/pesos/anatomy.pt"
 ln -s "$ENT/dependencies/kneexnet" "$OUT/pesos/kneexnet"
 cd "$ENT/cloud_code"
 /usr/bin/time -v "$PY" -u -m training.infer --data "$OUT/gold58_comp" --checkpoint "$ENT/best.pt" \
