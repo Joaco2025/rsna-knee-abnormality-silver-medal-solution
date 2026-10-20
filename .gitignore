@@ -8,6 +8,15 @@ preproc/
 _to_delete/
 # Notebooks, foro y pesos de terceros descargados por jcastro: solo consulta local, no van al repo.
 referencias/rsna_research/
+# (19-oct) Toda la carpeta de referencias de terceros (1.2 GB), los pesos descargados (models/, 1.8 GB, incluye
+# folds/activos con identificadores), los paquetes offline de anomalib y la copia suelta de salidas de ejecuciones.
+referencias/
+models/
+anomalib_offline/
+tools/anomalib_offline/
+/runs_joako/
+# Diagnósticos por estudio: llevan fragmentos de UID y etiquetas de Gold (datos de la competencia).
+research/**/anatomia_errores.json
 *.dcm
 *.nii
 *.nii.gz
