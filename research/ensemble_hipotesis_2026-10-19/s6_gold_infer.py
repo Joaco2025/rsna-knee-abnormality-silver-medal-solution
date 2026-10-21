@@ -64,6 +64,8 @@ def main():
     ap.add_argument("--d7", required=True, help="runs_joako/2093337_1/train/models/E_prior_s7_fall.pt")
     ap.add_argument("--s2026", default="", help="runs_joako/2098694_0/train/models/E_prior_s2026_fall.pt (opcional)")
     ap.add_argument("--s1234", default="", help="runs_joako/2098694_1/train/models/E_prior_s1234_fall.pt (opcional)")
+    ap.add_argument("--d314", default="", help="runs_joako/2099380_0/train/models/E_prior_s314_fall.pt (destilado, opcional)")
+    ap.add_argument("--d2718", default="", help="runs_joako/2099380_1/train/models/E_prior_s2718_fall.pt (destilado, opcional)")
     ap.add_argument("--variantes", default="1:288,3:288,1:320",
                     help="stride:crop separados por comas; 1:288 = notebook; 3:288 = H5; 1:320 = imagen completa (campo de visión)")
     ap.add_argument("--amp", default="bf16")
@@ -81,6 +83,10 @@ def main():
         mapa["s6_s2026"] = ("E_prior_s2026_fall.pt", Path(a.s2026))
     if a.s1234:
         mapa["s6_s1234"] = ("E_prior_s1234_fall.pt", Path(a.s1234))
+    if a.d314:
+        mapa["s6_d314"] = ("E_prior_s1314_fall.pt", Path(a.d314))
+    if a.d2718:
+        mapa["s6_d2718"] = ("E_prior_s12718_fall.pt", Path(a.d2718))
     for k, (nombre, p) in mapa.items():
         os.symlink(p, modelos / nombre)
     orden = sorted(n for n, _ in mapa.values())                 # = sorted(glob) de compact_infer.load_group
