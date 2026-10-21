@@ -66,6 +66,8 @@ def main():
     ap.add_argument("--s1234", default="", help="runs_joako/2098694_1/train/models/E_prior_s1234_fall.pt (opcional)")
     ap.add_argument("--d314", default="", help="runs_joako/2099380_0/train/models/E_prior_s314_fall.pt (destilado, opcional)")
     ap.add_argument("--d2718", default="", help="runs_joako/2099380_1/train/models/E_prior_s2718_fall.pt (destilado, opcional)")
+    ap.add_argument("--omer-puro", default="", help="runs_joako/2108250_0/train/models/E_prior_s42_fall.pt (etiquetas Omer, opcional)")
+    ap.add_argument("--omer-mix", default="", help="runs_joako/2108251_0/train/models/E_prior_s42_fall.pt (0.5 JEV + 0.5 Omer, opcional)")
     ap.add_argument("--variantes", default="1:288,3:288,1:320",
                     help="stride:crop separados por comas; 1:288 = notebook; 3:288 = H5; 1:320 = imagen completa (campo de visión)")
     ap.add_argument("--amp", default="bf16")
@@ -87,6 +89,10 @@ def main():
         mapa["s6_d314"] = ("E_prior_s1314_fall.pt", Path(a.d314))
     if a.d2718:
         mapa["s6_d2718"] = ("E_prior_s12718_fall.pt", Path(a.d2718))
+    if a.omer_puro:
+        mapa["s6_omer_puro"] = ("E_prior_s2042_fall.pt", Path(a.omer_puro))
+    if a.omer_mix:
+        mapa["s6_omer_mix"] = ("E_prior_s3042_fall.pt", Path(a.omer_mix))
     for k, (nombre, p) in mapa.items():
         os.symlink(p, modelos / nombre)
     orden = sorted(n for n, _ in mapa.values())                 # = sorted(glob) de compact_infer.load_group
